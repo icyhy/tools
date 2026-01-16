@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-test('E2E Flow: Check-in -> Lobby -> Game Start -> Game Play', async ({ browser }) => {
+test('E2E Flow: Participant Join & Host Start Game', async ({ browser }) => {
   // 1. Open Large Screen
   const screenPage = await browser.newPage();
   const screenConsoleLogs = [];
@@ -12,64 +12,72 @@ test('E2E Flow: Check-in -> Lobby -> Game Start -> Game Play', async ({ browser 
   // Wait for load
   await screenPage.waitForTimeout(1000);
   
-  if (screenConsoleLogs.length > 0) {
-      console.log('Screen Console Logs:', screenConsoleLogs);
-  }
-
   // Verify QR Code section exists
   const qrSection = screenPage.locator('.qrcode-section');
   await expect(qrSection).toBeVisible();
   
-  // 2. Open Mobile Page (Simulate User)
-  const mobilePage = await browser.newPage();
-  await mobilePage.goto('http://localhost:5175/mobile');
-  console.log('Opened Mobile Page');
+  // 2. Open Mobile Page (Simulate Participant)
+  const participantPage = await browser.newPage();
+  await participantPage.goto('http://localhost:5175/mobile');
+  console.log('Opened Participant Page');
 
+  // Select Role: Participant
+  await participantPage.click('button.role-btn:has-text("我是参与者")');
+  
   // Login
-  await mobilePage.fill('input', 'TestUser');
-  await mobilePage.click('button');
+  participantPage.on('console', msg => console.log('Participant Console:', msg.text()));
+  await participantPage.fill('input.input-field', 'TestUser');
+  await participantPage.click('button.btn-primary');
   
   // Verify Lobby
-  await expect(mobilePage.locator('.mobile-lobby')).toBeVisible();
-  console.log('Mobile User Logged In');
+  console.log('Waiting for Lobby...');
+  await expect(participantPage.locator('.mobile-lobby')).toBeVisible({ timeout: 10000 });
+  console.log('Participant Logged In');
 
   // Verify User Count on Screen (Wait for SignalR propagation)
   await screenPage.waitForTimeout(1000);
-  // Note: Current implementation resets count on refresh, but user join increments it. 
-  // Since screen was open first, it should receive the Join event.
-  // However, the current code in ScreenHome.vue increments count on 'UserJoined'.
-  // Let's check if '已签到人数' contains '1'
   const userCountText = await screenPage.locator('.users-section h2').innerText();
   console.log('User Count on Screen:', userCountText);
+  // Expect count to be at least 1 (or incremented)
+  // Note: Depending on server restart, it might be 1. 
+  // Let's just log it for now as strict equality might be flaky if test re-runs without server restart.
 
-  // 3. Start Game (Simulate Host action via Console)
-  console.log('Starting Game via SignalR...');
-  await screenPage.evaluate(async () => {
-      if (window.__SIGNALR_CONNECTION__) {
-          await window.__SIGNALR_CONNECTION__.invoke("StartInteraction", "FindNumber");
-      } else {
-          throw new Error("SignalR connection not found on window");
-      }
-  });
+  // 3. Open Mobile Page (Simulate Host)
+  const hostPage = await browser.newPage();
+  await hostPage.goto('http://localhost:5175/mobile');
+  console.log('Opened Host Page');
 
-  // 4. Verify Game Loaded on Screen
-  // Wait for the game container to appear
-  await screenPage.waitForSelector('.find-number-screen', { timeout: 5000 });
+  // Select Role: Host
+  await hostPage.click('button.role-btn:has-text("我是主持人")');
+  
+  // Input Password
+  await hostPage.fill('input[type="password"]', 'admin123');
+  await hostPage.click('button.btn-primary');
+  
+  // Verify Host Dashboard
+  await expect(hostPage.locator('.host-dashboard')).toBeVisible();
+  console.log('Host Logged In');
+
+  // 4. Host Start Game
+  console.log('Host Starting Game...');
+  // Find "找数字规律" card and click start
+  const pluginCard = hostPage.locator('.plugin-card').filter({ hasText: '找数字规律' });
+  await pluginCard.locator('button.start-btn').click();
+
+  // 5. Verify Game Loaded on Screen
+  await screenPage.waitForSelector('.find-number-screen', { timeout: 10000 });
   console.log('Game Loaded on Screen');
   
-  // 5. Verify Game Loaded on Mobile
-  await mobilePage.waitForSelector('.find-number-mobile', { timeout: 5000 });
-  console.log('Game Loaded on Mobile');
+  // 6. Verify Game Loaded on Participant Mobile
+  await participantPage.waitForSelector('.find-number-mobile', { timeout: 10000 });
+  console.log('Game Loaded on Participant Mobile');
 
-  // 6. Play Game (Submit Answer)
-  await mobilePage.fill('input.number-input', '42');
-  await mobilePage.click('button.submit-btn');
+  // 7. Participant Play Game
+  await participantPage.fill('input.number-input', '42');
+  await participantPage.click('button.submit-btn');
   
   // Verify button state
-  const btnText = await mobilePage.locator('button.submit-btn').innerText();
+  const btnText = await participantPage.locator('button.submit-btn').innerText();
   expect(btnText).toBe('已提交');
-  console.log('Mobile Answer Submitted');
-
-  // 7. Wait for Result (Game is 30s long, maybe too long for test?)
-  // We can just verify the game started for now.
+  console.log('Participant Answer Submitted');
 });

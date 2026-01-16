@@ -1,1 +1,42 @@
-/.trae
+# User specific
+bin/
+obj/
+temp/
+tmp/
+*.tmp
+*.log
+
+# Visual Studio / .NET
+.vs/
+*.user
+*.suo
+*.userprefs
+*.sln.docstates
+
+# ASP.NET Core
+src/Backend/InteractiveTraining.Api/appsettings.Development.json
+
+# Node.js / Frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+.trae/
+src/Backend/InteractiveTraining.Api/bin/
+src/Backend/InteractiveTraining.Api/obj/

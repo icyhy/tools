@@ -52,8 +52,10 @@ const handleLogin = async () => {
   localStorage.setItem('userRole', 'participant');
   
   try {
+      console.log("Attempting to join session with name:", name.value);
       // Call JoinSession to notify server
       await invoke("JoinSession", name.value);
+      console.log("JoinSession success, navigating to lobby");
       router.push('/mobile/lobby');
   } catch (err) {
       console.error("Join session failed", err);
