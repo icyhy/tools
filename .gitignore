@@ -40,3 +40,6 @@ Thumbs.db
 .trae/
 src/Backend/InteractiveTraining.Api/bin/
 src/Backend/InteractiveTraining.Api/obj/
+
+test/node_modules/
+src/Frontend/node_modules/
