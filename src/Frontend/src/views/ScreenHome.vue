@@ -34,7 +34,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, shallowRef } from 'vue';
-import { connection, on, off } from '@/services/signalr';
+import { connection, on, off, invoke } from '@/services/signalr';
 import { loadPluginComponent } from '@/utils/pluginLoader';
 
 const userCount = ref(0);
@@ -43,6 +43,12 @@ const currentPlugin = ref(null);
 const pluginComponent = shallowRef(null);
 const mobileUrl = ref('');
 const qrCodeUrl = ref('');
+
+// Expose SignalR to plugins via window object
+if (typeof window !== 'undefined') {
+    window.signalRConnection = connection;
+    window.signalRInvoke = invoke;
+}
 
 onMounted(() => {
   // Calculate dynamic URL
@@ -55,22 +61,22 @@ onMounted(() => {
   qrCodeUrl.value = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(mobileUrl.value)}`;
 
   on('UserJoined', (user) => {
-    users.value.push({ id: Date.now(), name: 'User' });
-    userCount.value++;
+    users.value.push({ id: user.id || Date.now(), name: user.name || 'User' });
   });
   
   on('UserCountUpdate', (count) => {
       userCount.value = count;
   });
 
-  on('SwitchPlugin', async (pluginId) => {
-      console.log("Switching to plugin:", pluginId);
+  on('SwitchPlugin', async (pluginId, config) => {
+      console.log("Switching to plugin:", pluginId, config);
       currentPlugin.value = pluginId;
       try {
           const comp = await loadPluginComponent(`/plugins/${pluginId}/index.vue`);
           pluginComponent.value = comp;
       } catch (e) {
           console.error("Failed to load plugin", e);
+          alert("加载插件失败: " + e.message);
       }
   });
 });
@@ -79,6 +85,12 @@ onUnmounted(() => {
   off('UserJoined');
   off('UserCountUpdate');
   off('SwitchPlugin');
+  
+  // Clean up window references
+  if (typeof window !== 'undefined') {
+      delete window.signalRConnection;
+      delete window.signalRInvoke;
+  }
 });
 </script>
 

@@ -17,16 +17,23 @@
 </template>
 
 <script setup>
-import { ref, onMounted, shallowRef } from 'vue';
-import { connection, on } from '@/services/signalr';
+import { ref, onMounted, onUnmounted, shallowRef } from 'vue';
+import { connection, on, off, invoke } from '@/services/signalr';
 import { loadPluginComponent } from '@/utils/pluginLoader';
 
 const userName = ref(localStorage.getItem('userName') || 'Guest');
 const currentPlugin = ref(null);
 const pluginComponent = shallowRef(null);
 
+// Expose SignalR to plugins via window object
+if (typeof window !== 'undefined') {
+    window.signalRConnection = connection;
+    window.signalRInvoke = invoke;
+}
+
 onMounted(() => {
-    on('SwitchPlugin', async (pluginId) => {
+    on('SwitchPlugin', async (pluginId, config) => {
+        console.log("Mobile switching to plugin:", pluginId, config);
         currentPlugin.value = pluginId;
         // Load remote component
         try {
@@ -34,8 +41,19 @@ onMounted(() => {
             pluginComponent.value = comp;
         } catch (e) {
             console.error("Failed to load plugin", e);
+            alert("加载插件失败: " + e.message);
         }
     });
+});
+
+onUnmounted(() => {
+    off('SwitchPlugin');
+    
+    // Clean up window references
+    if (typeof window !== 'undefined') {
+        delete window.signalRConnection;
+        delete window.signalRInvoke;
+    }
 });
 </script>
 
