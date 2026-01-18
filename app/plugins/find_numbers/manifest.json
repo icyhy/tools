@@ -1,0 +1,23 @@
+{
+    "id": "find_numbers",
+    "name": "找数字规律",
+    "description": "三个阶段：随机云、四象限、有序行。找出缺失的数字。",
+    "version": "1.0.0",
+    "stages": [
+        {
+            "id": 1,
+            "name": "随机数字云",
+            "duration": 30
+        },
+        {
+            "id": 2,
+            "name": "四象限分布",
+            "duration": 30
+        },
+        {
+            "id": 3,
+            "name": "有序排列",
+            "duration": 30
+        }
+    ]
+}

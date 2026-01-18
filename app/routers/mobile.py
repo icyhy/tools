@@ -4,7 +4,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Event, Participant
-from app.plugins import plugin_manager
+# from app.plugins import plugin_manager
 import uuid
 import random
 
@@ -137,6 +137,26 @@ async def mobile_host(request: Request, db: Session = Depends(get_db)):
         "participant": participant,
         "plugins": plugin_manager.plugins.values()
     })
+
+@router.get("/mobile/plugin/{plugin_id}")
+async def mobile_plugin(plugin_id: str, request: Request, db: Session = Depends(get_db)):
+    session_token = request.cookies.get("session_token")
+    if not session_token:
+        return RedirectResponse(url="/signin")
+    
+    # Check if host for host page
+    participant = db.query(Participant).filter(Participant.session_token == session_token).first()
+    if not participant:
+        return RedirectResponse(url="/signin")
+         
+    if plugin_id == "find_numbers":
+        from app.plugins.find_numbers.router import templates as plugin_templates
+        if participant.role == "host":
+            return plugin_templates.TemplateResponse("host.html", {"request": request})
+        else:
+            return plugin_templates.TemplateResponse("user.html", {"request": request})
+             
+    return HTTPException(status_code=404, detail="Plugin not found")
 
 @router.get("/user/{plugin_id}")
 async def user_plugin(plugin_id: str, request: Request, db: Session = Depends(get_db)):

@@ -15,11 +15,11 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 # Setup templates
 templates = Jinja2Templates(directory="app/templates")
 
-from app.plugins import plugin_manager
-
-@app.on_event("startup")
-async def startup_event():
-    plugin_manager.load_plugins()
+# from app.plugins import plugin_manager
+#
+# @app.on_event("startup")
+# async def startup_event():
+#    plugin_manager.load_plugins()
 
 # Mount plugins static
 import os
@@ -28,10 +28,14 @@ if not os.path.exists("plugins"):
 app.mount("/plugins", StaticFiles(directory="plugins"), name="plugins")
 
 from app.routers import display, mobile, admin
+# from app.plugin_loader import plugin_router # Comment out old dynamic loader if it exists or conflicts
+from app.plugins.find_numbers import router as find_numbers_router
 
+app.include_router(find_numbers_router.router)
 app.include_router(display.router)
 app.include_router(mobile.router)
 app.include_router(admin.router)
+# app.include_router(plugin_router)
 
 @app.websocket("/ws/{role}")
 async def websocket_endpoint(websocket: WebSocket, role: str):

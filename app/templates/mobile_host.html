@@ -11,26 +11,9 @@
     
     <div class="mobile-card">
         <h4>互动控制</h4>
-        {% if plugins %}
-            {% for plugin in plugins %}
-            <div style="border: 1px solid #eee; padding: 10px; margin-bottom: 10px; border-radius: 4px;">
-                <strong>{{ plugin.name }}</strong>
-                <br>
-                <small>{{ plugin.meta.get('description', '') }}</small>
-                <div style="margin-top: 5px;">
-                    <!-- Use htmx or fetch to load plugin control into a container, or iframe? 
-                         Requirements say GET /host/{plugin_id}.
-                         For MVP, let's link to it or load it via AJAX.
-                         Better: Link to a separate page or expand it here. 
-                         Let's use a link for now.
-                    -->
-                    <button class="btn" onclick="loadPlugin('{{ plugin.plugin_id }}')">加载互动</button>
-                </div>
-            </div>
-            {% endfor %}
-        {% else %}
-            <p>暂无可用互动插件。</p>
-        {% endif %}
+        <div style="display: grid; gap: 10px;">
+            <a href="/mobile/plugin/find_numbers" class="btn">进入【找数字规律】控制台</a>
+        </div>
     </div>
 
     <div class="mobile-card" id="plugin-container" style="display: none;">

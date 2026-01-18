@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Event, Participant
 from app.utils import generate_qr_base64
-from app.plugins import plugin_manager
+# from app.plugins import plugin_manager
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -45,13 +45,12 @@ async def display_index(request: Request, db: Session = Depends(get_db)):
         "current_plugin_state": event.current_plugin_state
     })
 
-@router.get("/api/stats/count")
-async def get_participant_count(db: Session = Depends(get_db)):
-    event = db.query(Event).filter(Event.is_active == True).first()
-    if not event:
-        return {"count": 0}
-    count = db.query(Participant).filter(Participant.event_id == event.id).count()
-    return {"count": count}
+@router.get("/display/{plugin_id}")
+async def display_plugin(plugin_id: str, request: Request):
+    if plugin_id == "find_numbers":
+        from app.plugins.find_numbers.router import templates as plugin_templates
+        return plugin_templates.TemplateResponse("display.html", {"request": request})
+    return HTTPException(status_code=404, detail="Plugin not found")
 
 @router.get("/display/results/{plugin_id}")
 async def display_results(plugin_id: str, request: Request):

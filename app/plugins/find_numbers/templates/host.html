@@ -1,0 +1,41 @@
+<div class="mobile-page">
+    <div class="mobile-card">
+        <h3>找数字规律 - 控制台</h3>
+        <p>当前状态: <span id="status">未开始</span></p>
+        <p>剩余时间: <span id="host-timer">0</span>s</p>
+    </div>
+    
+    <div class="mobile-card">
+        <button class="btn" onclick="controlGame(1)">开始第 1 阶段 (随机云)</button>
+        <button class="btn" onclick="controlGame(2)">开始第 2 阶段 (四象限)</button>
+        <button class="btn" onclick="controlGame(3)">开始第 3 阶段 (有序行)</button>
+        <button class="btn" style="background-color: #dc3545; margin-top: 20px;" onclick="stopGame()">结束本轮</button>
+    </div>
+</div>
+
+<script>
+    async function controlGame(stage) {
+        await fetch('/api/plugin/find_numbers/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ stage: stage })
+        });
+        document.getElementById('status').innerText = '进行中 - 阶段 ' + stage;
+        startHostTimer(30);
+    }
+    
+    async function stopGame() {
+        await fetch('/api/plugin/find_numbers/stop', { method: 'POST' });
+        document.getElementById('status').innerText = '已结束';
+    }
+    
+    function startHostTimer(duration) {
+        let timer = duration;
+        const el = document.getElementById('host-timer');
+        const interval = setInterval(() => {
+            timer--;
+            el.innerText = timer;
+            if (timer <= 0) clearInterval(interval);
+        }, 1000);
+    }
+</script>
