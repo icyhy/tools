@@ -12,47 +12,86 @@
         <p>当前状态: <span style="color: green;">已签到</span></p>
         <p>请关注大屏幕，等待主持人开启互动。</p>
     </div>
-    
+
+    <!-- 动态互动内容容器 -->
     <div class="mobile-card">
         <h4>互动区</h4>
-        <div id="interactive-area">
-            <a href="/mobile/plugin/find_numbers" class="btn">进入【找数字规律】</a>
+        <div id="user-dynamic-content">
+            <p style="color: #999; text-align: center;">等待互动启动...</p>
         </div>
     </div>
 </div>
 
 <script>
-    // Load initial plugin if present
-    document.addEventListener('DOMContentLoaded', () => {
-        const placeholder = document.querySelector('.plugin-placeholder');
-        if (placeholder) {
-            loadPlugin(placeholder.dataset.pluginId);
+    // ========== 状态轮询机制 ==========
+    let localState = {
+        plugin_id: null,
+        plugin_state: null
+    };
+
+    // 定时轮询培训状态（每2秒）
+    setInterval(async () => {
+        try {
+            const response = await fetch('/api/training/status');
+            if (response.ok) {
+                const serverState = await response.json();
+
+                // 检查状态是否改变
+                if (serverState.plugin_id !== localState.plugin_id ||
+                    serverState.plugin_state !== localState.plugin_state) {
+
+                    console.log('User state changed:', localState, '->', serverState);
+
+                    // 根据新状态更新用户页面内容
+                    if (serverState.plugin_id && serverState.plugin_state === 'running') {
+                        loadUserPlugin(serverState.plugin_id);
+                    } else if (serverState.plugin_state === 'results') {
+                        showEndMessage();
+                    } else {
+                        resetUserView();
+                    }
+
+                    // 更新本地状态
+                    localState = serverState;
+                }
+            }
+        } catch (e) {
+            console.error('Failed to poll training status', e);
         }
-    });
+    }, 2000);  // 2秒轮询一次
+
+    // ========== WebSocket（辅助） ==========
 
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const wsUrl = `${protocol}://${window.location.host}/ws/user`;
     const ws = new WebSocket(wsUrl);
 
-    ws.onmessage = function(event) {
+    ws.onmessage = function (event) {
         const data = JSON.parse(event.data);
+        console.log('[User WS] Received:', data);
         if (data.type === 'plugin_start') {
-             loadPlugin(data.plugin_id);
+            loadPlugin(data.plugin_id);
         } else if (data.type === 'plugin_end') {
-             document.getElementById('interactive-area').innerHTML = '<p style="color: #666; text-align: center;">互动已结束，请看大屏幕结果</p>';
+            const container = document.getElementById('user-dynamic-content');
+            if (container) {
+                container.innerHTML = '<p style="color: #666; text-align: center;">互动已结束，请看大屏幕结果</p>';
+            }
         } else if (data.type === 'plugin_reset') {
-             location.reload();
+            resetUserView();  // Don't reload, just reset content
         }
     };
 
     async function loadPlugin(pluginId) {
+        console.log('[User] loadPlugin called with:', pluginId);
         try {
-            const response = await fetch(`/user/${pluginId}`);
+            const response = await fetch(`/mobile/plugin/${pluginId}`);
+            console.log('[User] Response status:', response.status);
             if (response.ok) {
                 const html = await response.text();
-                const container = document.getElementById('interactive-area');
+                console.log('[User] HTML length:', html.length);
+                const container = document.getElementById('user-dynamic-content');
                 container.innerHTML = html;
-                
+
                 // Execute scripts
                 Array.from(container.querySelectorAll('script')).forEach(oldScript => {
                     const newScript = document.createElement('script');
@@ -60,10 +99,27 @@
                     newScript.appendChild(document.createTextNode(oldScript.innerHTML));
                     oldScript.parentNode.replaceChild(newScript, oldScript);
                 });
+                console.log('[User] Plugin loaded successfully');
+            } else {
+                console.error('[User] Failed to load plugin, status:', response.status);
             }
         } catch (e) {
-            console.error("Failed to load plugin", e);
+            console.error("[User] Failed to load plugin", e);
         }
+    }
+
+    async function loadUserPlugin(pluginId) {
+        await loadPlugin(pluginId);
+    }
+
+    function showEndMessage() {
+        const container = document.getElementById('user-dynamic-content');
+        container.innerHTML = '<p style="color: #666; text-align: center;">互动已结束，请看大屏幕结果</p>';
+    }
+
+    function resetUserView() {
+        const container = document.getElementById('user-dynamic-content');
+        container.innerHTML = '<p style="color: #999; text-align: center;">等待互动启动...</p>';
     }
 </script>
 {% endblock %}

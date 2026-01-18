@@ -44,7 +44,7 @@ async def admin_page(request: Request, db: Session = Depends(get_db)):
     
     count = db.query(Participant).filter(Participant.event_id == event.id).count()
     
-    from app.plugins import plugin_manager
+    from app.plugin_manager import plugin_manager
     all_plugins = plugin_manager.plugins
     
     return templates.TemplateResponse("admin.html", {

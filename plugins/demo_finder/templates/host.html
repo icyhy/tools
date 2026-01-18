@@ -1,5 +1,33 @@
 <div class="plugin-card" style="border: 1px solid #ddd; padding: 15px; margin-bottom: 10px; border-radius: 8px;">
     <h3>找数字规律</h3>
-    <p>状态: 就绪</p>
-    <button class="btn action-btn" onclick="startPlugin('demo_finder')">开始互动</button>
+    <p style="color: #666; font-size: 0.9rem;">这个互动有3个展示阶段</p>
+
+    <div style="display: grid; gap: 10px; margin-top: 15px;">
+        <button class="btn" style="background-color: #28a745; color: white;" onclick="setPhase(1)">第1阶段 - 基础序列</button>
+        <button class="btn" style="background-color: #17a2b8; color: white;" onclick="setPhase(2)">第2阶段 - 四象限</button>
+        <button class="btn" style="background-color: #6610f2; color: white;" onclick="setPhase(3)">第3阶段 - 有序网格</button>
+    </div>
+
+    <p style="margin-top: 15px; font-size: 0.85rem; color: #999;">提示: 您可以在任意阶段之间切换，或使用底部的"完成互动"按钮结束</p>
 </div>
+
+<script>
+    async function setPhase(phase) {
+        try {
+            const response = await fetch(`/api/plugin/set_phase`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phase: phase })
+            });
+
+            if (response.ok) {
+                console.log(`切换到第${phase}阶段`);
+            } else {
+                alert('阶段切换失败');
+            }
+        } catch (e) {
+            console.error(e);
+            alert('请求出错');
+        }
+    }
+</script>

@@ -1,11 +1,77 @@
-<div class="results-view" style="text-align:center; padding:50px;">
-    <h2>互动统计结果</h2>
-    <div style="margin-top: 30px;">
-        <div style="font-size: 1.5rem; margin-bottom: 20px;">
-            总提交人数: <strong>{{ results.total }}</strong>
+<div class="results-view" style="text-align:center; padding:50px; color: #FFF;">
+    <h2>🎉 找数字规律 - 统计结果</h2>
+    <div style="margin-top: 20px; font-size: 1.3rem;">
+        总参与人数: <strong>{{ results.total_participants }}</strong>
+    </div>
+
+    <!-- Phase 1 Results -->
+    <div style="margin-top: 40px; padding: 30px; background: rgba(102, 126, 234, 0.2); border-radius: 12px;">
+        <h3 style="color: #667eea;">📝 第一阶段统计</h3>
+        <div style="display: flex; gap: 40px; justify-content: center; margin-top: 20px;">
+            <div>
+                <div style="font-size: 1.2rem; color: #aaa;">平均找对</div>
+                <div style="font-size: 2.5rem; font-weight: bold; color: #4CAF50;">{{ results.phase1.average }}</div>
+            </div>
+            <div>
+                <div style="font-size: 1.2rem; color: #aaa;">最高找对</div>
+                <div style="font-size: 2.5rem; font-weight: bold; color: #FF9800;">{{ results.phase1.max }}</div>
+            </div>
         </div>
-        <div style="font-size: 1.5rem; color: green;">
-            回答正确: <strong>{{ results.correct }}</strong>
+        <div style="margin-top: 20px;">
+            <div style="font-size: 1.1rem; margin-bottom: 10px;">缺失的数字：</div>
+            <div style="font-size: 1.5rem; font-weight: bold; color: #FFD700;">
+                {% for num in results.phase1.missing %}
+                <span style="margin: 0 8px;">{{ num }}</span>
+                {% endfor %}
+            </div>
         </div>
     </div>
+
+    <!-- Phase 2 Results -->
+    <div style="margin-top: 30px; padding: 30px; background: rgba(118, 75, 162, 0.2); border-radius: 12px;">
+        <h3 style="color: #764ba2;">🔄 第二阶段统计</h3>
+        <div style="display: flex; gap: 40px; justify-content: center; margin-top: 20px;">
+            <div>
+                <div style="font-size: 1.2rem; color: #aaa;">平均找对</div>
+                <div style="font-size: 2.5rem; font-weight: bold; color: #4CAF50;">{{ results.phase2.average }}</div>
+            </div>
+            <div>
+                <div style="font-size: 1.2rem; color: #aaa;">最高找对</div>
+                <div style="font-size: 2.5rem; font-weight: bold; color: #FF9800;">{{ results.phase2.max }}</div>
+            </div>
+        </div>
+        <div style="margin-top: 20px;">
+            <div style="font-size: 1.1rem; margin-bottom: 10px;">缺失的数字：</div>
+            <div style="font-size: 1.5rem; font-weight: bold; color: #FFD700;">
+                {% for num in results.phase2.missing %}
+                <span style="margin: 0 8px;">{{ num }}</span>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Phase 3 Results -->
+    <div style="margin-top: 30px; padding: 30px; background: rgba(255, 87, 87, 0.2); border-radius: 12px;">
+        <h3 style="color: #FF5757;">📋 第三阶段统计</h3>
+        <div style="display: flex; gap: 40px; justify-content: center; margin-top: 20px;">
+            <div>
+                <div style="font-size: 1.2rem; color: #aaa;">平均找对</div>
+                <div style="font-size: 2.5rem; font-weight: bold; color: #4CAF50;">{{ results.phase3.average }}</div>
+            </div>
+            <div>
+                <div style="font-size: 1.2rem; color: #aaa;">最高找对</div>
+                <div style="font-size: 2.5rem; font-weight: bold; color: #FF9800;">{{ results.phase3.max }}</div>
+            </div>
+        </div>
+        <div style="margin-top: 20px;">
+            <div style="font-size: 1.1rem; margin-bottom: 10px;">缺失的数字：</div>
+            <div style="font-size: 1.5rem; font-weight: bold; color: #FFD700;">
+                {% for num in results.phase3.missing %}
+                <span style="margin: 0 8px;">{{ num }}</span>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- No manual buttons - host controls exit via mobile -->
 </div>

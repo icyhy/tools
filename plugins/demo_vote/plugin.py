@@ -1,4 +1,4 @@
-from app.plugins import BasePlugin
+from app.plugin_manager import BasePlugin
 from app.websockets import manager
 from app.models import PluginSubmission, Event
 from app.database import SessionLocal

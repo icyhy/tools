@@ -1,32 +1,147 @@
-<div class="find-number-mobile">
-    <h2>找数字规律</h2>
-    <p>请输入大屏幕上的问号代表的数字：</p>
-    <input type="number" class="number-input" style="width: 100%; padding: 10px; margin: 10px 0;">
-    <button class="btn submit-btn" onclick="submitAnswer()">提交</button>
+<div id="find-numbers-user" style="padding:20px;">
+    <div id="waiting-view" style="text-align:center; padding:40px;">
+        <h3 style="color: #666;">📺 请观看大屏</h3>
+        <p>当前阶段：<span id="current-phase-text">准备中...</span></p>
+        <p style="color: #999;">观察大屏上的数字，找出缺失的数字</p>
+    </div>
+
+    <div id="input-view" style="display:none;">
+        <h3 style="margin-bottom: 10px;">🔢 请输入阶段 <span id="submit-phase-num"></span> 缺失的数字</h3>
+        <p style="color: #666; margin-bottom: 20px; font-size: 14px;">共缺失10个数字，请尽可能多地找出来</p>
+
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 20px;">
+            <input type="number" class="number-input" placeholder="数字1" min="1" max="100"
+                style="padding: 12px; font-size: 16px; border: 2px solid #ddd; border-radius: 4px;">
+            <input type="number" class="number-input" placeholder="数字2" min="1" max="100"
+                style="padding: 12px; font-size: 16px; border: 2px solid #ddd; border-radius: 4px;">
+            <input type="number" class="number-input" placeholder="数字3" min="1" max="100"
+                style="padding: 12px; font-size: 16px; border: 2px solid #ddd; border-radius: 4px;">
+            <input type="number" class="number-input" placeholder="数字4" min="1" max="100"
+                style="padding: 12px; font-size: 16px; border: 2px solid #ddd; border-radius: 4px;">
+            <input type="number" class="number-input" placeholder="数字5" min="1" max="100"
+                style="padding: 12px; font-size: 16px; border: 2px solid #ddd; border-radius: 4px;">
+            <input type="number" class="number-input" placeholder="数字6" min="1" max="100"
+                style="padding: 12px; font-size: 16px; border: 2px solid #ddd; border-radius: 4px;">
+            <input type="number" class="number-input" placeholder="数字7" min="1" max="100"
+                style="padding: 12px; font-size: 16px; border: 2px solid #ddd; border-radius: 4px;">
+            <input type="number" class="number-input" placeholder="数字8" min="1" max="100"
+                style="padding: 12px; font-size: 16px; border: 2px solid #ddd; border-radius: 4px;">
+            <input type="number" class="number-input" placeholder="数字9" min="1" max="100"
+                style="padding: 12px; font-size: 16px; border: 2px solid #ddd; border-radius: 4px;">
+            <input type="number" class="number-input" placeholder="数字10" min="1" max="100"
+                style="padding: 12px; font-size: 16px; border: 2px solid #ddd; border-radius: 4px;">
+        </div>
+
+        <button onclick="submitNumbers()" style="
+            width: 100%;
+            padding: 15px;
+            font-size: 18px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+        ">提交阶段 <span id="submit-phase-num2"></span> 答案</button>
+
+        <div id="submit-status" style="margin-top: 15px; text-align: center; color: #666;"></div>
+    </div>
 </div>
+
 <script>
-    async function submitAnswer() {
-        const val = document.querySelector('.number-input').value;
-        const btn = document.querySelector('.submit-btn');
-        
+    let currentPhase = 0;
+    let hasSubmittedPhase = { 1: false, 2: false, 3: false };
+
+    // Listen for phase changes (we'll use custom event or polling)
+    // For now, let's add a simple button for users to indicate they're ready
+    function showInputForPhase(phase) {
+        currentPhase = phase;
+
+        // Check if already submitted for this phase
+        if (hasSubmittedPhase[phase]) {
+            document.getElementById('waiting-view').style.display = 'block';
+            document.getElementById('input-view').style.display = 'none';
+            document.getElementById('current-phase-text').innerText = `第${phase}阶段 - 已提交`;
+            return;
+        }
+
+        // Show input form
+        document.getElementById('waiting-view').style.display = 'none';
+        document.getElementById('input-view').style.display = 'block';
+        document.getElementById('submit-phase-num').innerText = phase;
+        document.getElementById('submit-phase-num2').innerText = phase;
+
+        // Clear previous inputs
+        document.querySelectorAll('.number-input').forEach(input => {
+            input.value = '';
+            input.disabled = false;
+        });
+        document.getElementById('submit-status').innerText = '';
+    }
+
+    // Add buttons to manually trigger input for each phase (temporary solution)
+    const waitingView = document.getElementById('waiting-view');
+    const buttonContainer = document.createElement('div');
+    buttonContainer.style.cssText = 'margin-top: 30px; display: flex; gap: 10px; justify-content: center;';
+    buttonContainer.innerHTML = `
+        <button onclick="showInputForPhase(1)" style="padding: 12px 20px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer;">阶段1答题</button>
+        <button onclick="showInputForPhase(2)" style="padding: 12px 20px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer;">阶段2答题</button>
+        <button onclick="showInputForPhase(3)" style="padding: 12px 20px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer;">阶段3答题</button>
+    `;
+    waitingView.appendChild(buttonContainer);
+
+    async function submitNumbers() {
+        const inputs = document.querySelectorAll('.number-input');
+        const numbers = [];
+
+        inputs.forEach(input => {
+            const val = parseInt(input.value);
+            if (!isNaN(val) && val >= 1 && val <= 100) {
+                numbers.push(val);
+            }
+        });
+
+        if (numbers.length === 0) {
+            alert('请至少输入一个数字');
+            return;
+        }
+
+        const statusDiv = document.getElementById('submit-status');
+        statusDiv.innerText = '提交中...';
+
         try {
             const response = await fetch('/api/plugin/demo_finder/submit', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ value: val })
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    phase: currentPhase,
+                    submitted_numbers: numbers
+                })
             });
-            
+
             if (response.ok) {
-                btn.innerText = "已提交";
-                btn.disabled = true;
+                statusDiv.innerText = '✅ 提交成功！';
+                statusDiv.style.color = 'green';
+                hasSubmittedPhase[currentPhase] = true;
+
+                // Disable inputs
+                inputs.forEach(input => input.disabled = true);
+
+                // Return to waiting view after 2 seconds
+                setTimeout(() => {
+                    document.getElementById('waiting-view').style.display = 'block';
+                    document.getElementById('input-view').style.display = 'none';
+                    document.getElementById('current-phase-text').innerText = `第${currentPhase}阶段 - 已提交`;
+                }, 2000);
             } else {
-                alert("提交失败");
+                statusDiv.innerText = '❌ 提交失败，请重试';
+                statusDiv.style.color = 'red';
             }
         } catch (e) {
             console.error(e);
-            alert("提交出错");
+            statusDiv.innerText = '❌ 网络错误';
+            statusDiv.style.color = 'red';
         }
     }
 </script>

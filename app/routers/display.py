@@ -3,8 +3,8 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Event, Participant
-from app.utils import generate_qr_base64
-# from app.plugins import plugin_manager
+from app.utils import generate_qr_base64, get_server_url
+from app.plugin_manager import plugin_manager
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -15,7 +15,7 @@ async def display_index(request: Request, db: Session = Depends(get_db)):
     event = db.query(Event).filter(Event.is_active == True).first()
     if not event:
         # Auto-create default event for MVP convenience
-        event = Event(title="默认培训活动", host_password_hash="admin123") # TODO: Hash password
+        event = Event(title="新培训活动", host_password_hash="admin123") # TODO: Hash password
         db.add(event)
         db.commit()
         db.refresh(event)
@@ -24,7 +24,8 @@ async def display_index(request: Request, db: Session = Depends(get_db)):
     count = db.query(Participant).filter(Participant.event_id == event.id).count()
     
     # Generate QR code for signin page
-    base_url = str(request.base_url).rstrip("/")
+    # Use server IP address instead of localhost for mobile access
+    base_url = get_server_url()
     signin_url = f"{base_url}/signin"
     qr_code = generate_qr_base64(signin_url)
     
@@ -47,21 +48,20 @@ async def display_index(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/display/{plugin_id}")
 async def display_plugin(plugin_id: str, request: Request):
-    if plugin_id == "find_numbers":
-        from app.plugins.find_numbers.router import templates as plugin_templates
-        return plugin_templates.TemplateResponse("display.html", {"request": request})
-    return HTTPException(status_code=404, detail="Plugin not found")
+    """Load plugin display content"""
+    plugin_templates = plugin_manager.get_templates(plugin_id)
+    if not plugin_templates:
+        raise HTTPException(status_code=404, detail="Plugin not found")
+    return plugin_templates.TemplateResponse("display.html", {"request": request})
 
 @router.get("/display/results/{plugin_id}")
-async def display_results(plugin_id: str, request: Request):
+async def display_results(plugin_id: str, request: Request, db: Session = Depends(get_db)):
+    """Load plugin results page"""
     plugin = plugin_manager.get_plugin(plugin_id)
     if not plugin:
         raise HTTPException(status_code=404, detail="Plugin not found")
         
-    # Get results data
-    # We need event_id, assume current active event
-    # In a real app, we might pass event_id or get it from context/db
-    db = next(get_db())
+    # Get results data from current active event
     event = db.query(Event).filter(Event.is_active == True).first()
     if not event:
          raise HTTPException(status_code=404, detail="No active event")
@@ -69,11 +69,7 @@ async def display_results(plugin_id: str, request: Request):
     results = await plugin.get_results(event.id)
     
     plugin_templates = plugin_manager.get_templates(plugin_id)
-    return plugin_templates.TemplateResponse("results.html", {"request": request, "results": results})
-
-@router.get("/display/{plugin_id}")
-async def display_plugin(plugin_id: str, request: Request):
-    plugin_templates = plugin_manager.get_templates(plugin_id)
     if not plugin_templates:
-        raise HTTPException(status_code=404, detail="Plugin not found")
-    return plugin_templates.TemplateResponse("display.html", {"request": request})
+        raise HTTPException(status_code=404, detail="Plugin templates not found")
+        
+    return plugin_templates.TemplateResponse("results.html", {"request": request, "results": results})

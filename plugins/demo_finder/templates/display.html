@@ -1,6 +1,195 @@
-<div class="find-number-screen" style="text-align: center; padding: 50px;">
-    <h1>找数字规律</h1>
-    <div style="font-size: 3rem; margin: 20px;">
-        1, 2, 4, 8, ?
-    </div>
+<div id="find-numbers-display"
+    style="width: 100vw; height: 100vh; position: relative; overflow: hidden; background: #000;">
+    <h2 id="phase-title"
+        style="position: absolute; top: 20px; left: 50%; transform: translateX(-50%); font-size: 2.5rem; z-index: 100; color: #FFF;">
+    </h2>
+
+    <!-- Container for numbers -->
+    <div id="number-container" style="width: 100%; height: 100%; position: relative;"></div>
 </div>
+
+<script>
+    let currentPhase = 0;
+    let currentMissingNumbers = [];
+
+    // Listen for phase change messages
+    window.pluginPhaseListener = function (phase) {
+        console.log('Phase changed to:', phase);
+        currentPhase = phase;
+        renderPhase(phase);
+    };
+
+    async function renderPhase(phase) {
+        const title = document.getElementById('phase-title');
+        const container = document.getElementById('number-container');
+
+        // Fetch missing numbers for this phase
+        const response = await fetch(`/api/plugin/demo_finder/missing?phase=${phase}`);
+        if (response.ok) {
+            const data = await response.json();
+            currentMissingNumbers = data.missing_numbers || [];
+        }
+
+        // Get numbers to display (1-100 minus missing)
+        const missingSet = new Set(currentMissingNumbers);
+        const displayNumbers = [];
+        for (let i = 1; i <= 100; i++) {
+            if (!missingSet.has(i)) {
+                displayNumbers.push(i);
+            }
+        }
+
+        console.log(`Phase ${phase}: Displaying ${displayNumbers.length} numbers, missing ${currentMissingNumbers.length}`);
+
+        if (phase === 1) {
+            title.innerText = '📝 第一阶段：记住这些数字';
+            renderPhase1RandomScatter(container, displayNumbers);
+        } else if (phase === 2) {
+            title.innerText = '🔄 第二阶段：观察这些数字';
+            renderPhase2ClockwiseQuadrants(container, displayNumbers);
+        } else if (phase === 3) {
+            title.innerText = '📋 第三阶段：记录这些数字';
+            renderPhase3GridRows(container, displayNumbers);
+        }
+    }
+
+    // Phase 1: Random scatter with varying font sizes - NO OVERLAPS
+    function renderPhase1RandomScatter(container, numbers) {
+        container.innerHTML = '';
+        container.style.cssText = 'width: 100%; height: 100%; position: relative;';
+
+        const usedPositions = [];
+        const margin = 5; // Margin percentage
+        const minDistance = 80; // Minimum pixel distance between numbers
+
+        numbers.forEach(num => {
+            const fontSize = Math.random() * 1.5 + 1.2; // 1.2-2.7rem
+            let x, y, attempts = 0;
+            let collision;
+
+            // Try to find a non-overlapping position
+            do {
+                collision = false;
+                x = margin + Math.random() * (90 - 2 * margin); // Leave margin on sides
+                y = 15 + margin + Math.random() * (75 - 2 * margin); // Leave margin top/bottom + title space
+
+                // Check collision with existing positions
+                for (let pos of usedPositions) {
+                    const dx = Math.abs(x - pos.x) * window.innerWidth / 100;
+                    const dy = Math.abs(y - pos.y) * window.innerHeight / 100;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < minDistance * fontSize / 2) {
+                        collision = true;
+                        break;
+                    }
+                }
+
+                attempts++;
+                if (attempts > 100) break; // Give up after 100 attempts
+            } while (collision);
+
+            usedPositions.push({ x, y });
+
+            const div = document.createElement('div');
+            div.innerText = num;
+            div.style.cssText = `
+                position: absolute;
+                left: ${x}%;
+                top: ${y}%;
+                font-size: ${fontSize}rem;
+                font-weight: bold;
+                color: #FFF;
+                text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+                white-space: nowrap;
+            `;
+            container.appendChild(div);
+        });
+    }
+
+    // Phase 2: Clockwise in 4 quadrants
+    function renderPhase2ClockwiseQuadrants(container, numbers) {
+        container.innerHTML = '';
+        container.style.cssText = 'display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 20px; padding: 100px 40px 40px 40px; height: 100%;';
+
+        // Create 4 quadrants
+        const quadrants = [
+            document.createElement('div'), // 右上 (0)
+            document.createElement('div'), // 右下 (1)
+            document.createElement('div'), // 左下 (2)
+            document.createElement('div')  // 左上 (3)
+        ];
+
+        quadrants.forEach((quad, i) => {
+            quad.style.cssText = `
+                border: 2px solid rgba(255,255,255,0.3);
+                border-radius: 12px;
+                padding: 20px;
+                display: flex;
+                flex-wrap: wrap;
+                align-items: flex-start;
+                align-content: flex-start;
+                gap: 15px;
+                overflow: auto;
+            `;
+        });
+
+        // Distribute numbers clockwise: 右上 → 右下 → 左下 → 左上
+        const sortedNumbers = [...numbers].sort((a, b) => a - b);
+        sortedNumbers.forEach((num, i) => {
+            const quadIndex = i % 4;
+            const span = document.createElement('span');
+            span.innerText = num;
+            span.style.cssText = `
+                font-size: 1.5rem;
+                font-weight: bold;
+                color: #FFF;
+                min-width: 50px;
+                text-align: center;
+            `;
+            quadrants[quadIndex].appendChild(span);
+        });
+
+        // Add in grid order: 右上, 右下, 左下, 左上 → 右上(0), 左上(3), 右下(1), 左下(2)
+        container.appendChild(quadrants[0]); // Top-right
+        container.appendChild(quadrants[3]); // Top-left
+        container.appendChild(quadrants[1]); // Bottom-right
+        container.appendChild(quadrants[2]); // Bottom-left
+    }
+
+    // Phase 3: Grid rows (10 columns × 9 rows)
+    function renderPhase3GridRows(container, numbers) {
+        container.innerHTML = '';
+        container.style.cssText = `
+            display: grid;
+            grid-template-columns: repeat(10, 1fr);
+            gap: 10px;
+            padding: 100px 40px 40px 40px;
+            align-items: center;
+            justify-items: center;
+        `;
+
+        const sortedNumbers = [...numbers].sort((a, b) => a - b);
+        sortedNumbers.forEach(num => {
+            const div = document.createElement('div');
+            div.innerText = num;
+            div.style.cssText = `
+                font-size: 1.8rem;
+                font-weight: bold;
+                color: #FFF;
+                padding: 10px;
+                background: rgba(255,255,255,0.1);
+                border-radius: 8px;
+                min-width: 60px;
+                text-align: center;
+            `;
+            container.appendChild(div);
+        });
+    }
+
+    // Auto-initialize to phase 1 after plugin loads
+    setTimeout(() => {
+        console.log('Auto-initializing to phase 1');
+        renderPhase(1);
+    }, 500);
+</script>

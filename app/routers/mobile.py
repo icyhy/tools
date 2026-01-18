@@ -4,7 +4,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Event, Participant
-# from app.plugins import plugin_manager
+from app.plugin_manager import plugin_manager
 import uuid
 import random
 
@@ -135,7 +135,7 @@ async def mobile_host(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse("mobile_host.html", {
         "request": request, 
         "participant": participant,
-        "plugins": plugin_manager.plugins.values()
+        "plugins": plugin_manager.plugins  # Pass dict, not values()
     })
 
 @router.get("/mobile/plugin/{plugin_id}")
@@ -144,19 +144,21 @@ async def mobile_plugin(plugin_id: str, request: Request, db: Session = Depends(
     if not session_token:
         return RedirectResponse(url="/signin")
     
-    # Check if host for host page
+    # Check participant
     participant = db.query(Participant).filter(Participant.session_token == session_token).first()
     if not participant:
         return RedirectResponse(url="/signin")
+    
+    # Get plugin templates dynamically
+    plugin_templates = plugin_manager.get_templates(plugin_id)
+    if not plugin_templates:
+        raise HTTPException(status_code=404, detail="Plugin not found")
          
-    if plugin_id == "find_numbers":
-        from app.plugins.find_numbers.router import templates as plugin_templates
-        if participant.role == "host":
-            return plugin_templates.TemplateResponse("host.html", {"request": request})
-        else:
-            return plugin_templates.TemplateResponse("user.html", {"request": request})
-             
-    return HTTPException(status_code=404, detail="Plugin not found")
+    # Return appropriate template based on role
+    if participant.role == "host":
+        return plugin_templates.TemplateResponse("host.html", {"request": request})
+    else:
+        return plugin_templates.TemplateResponse("user.html", {"request": request})
 
 @router.get("/user/{plugin_id}")
 async def user_plugin(plugin_id: str, request: Request, db: Session = Depends(get_db)):
@@ -164,6 +166,68 @@ async def user_plugin(plugin_id: str, request: Request, db: Session = Depends(ge
     if not plugin_templates:
         raise HTTPException(status_code=404, detail="Plugin not found")
     return plugin_templates.TemplateResponse("user.html", {"request": request})
+
+@router.get("/api/training/status")
+async def get_training_status(db: Session = Depends(get_db)):
+    """获取当前培训状态 - 用于前端轮询"""
+    import time
+    event = db.query(Event).filter(Event.is_active == True).first()
+    if not event:
+        return {
+            "status": "no_event",
+            "plugin_id": None,
+            "plugin_state": None,
+            "participant_count": 0,
+            "timestamp": time.time()
+        }
+    
+    # Count participants for this event
+    participant_count = db.query(Participant).filter(Participant.event_id == event.id).count()
+    
+    return {
+        "status": event.status,  # 'running' or 'idle'
+        "plugin_id": event.current_plugin_id,
+        "plugin_state": event.current_plugin_state,  # 'running', 'results', 'idle'
+        "participant_count": participant_count,
+        "timestamp": time.time()
+    }
+
+@router.get("/api/plugin/{plugin_id}/missing")
+async def get_missing_numbers(plugin_id: str, phase: int = 1, db: Session = Depends(get_db)):
+    """Get missing numbers for the find numbers game - specific phase"""
+    event = db.query(Event).filter(Event.is_active == True).first()
+    if not event or not event.plugin_data:
+        return {"missing_numbers": []}
+    
+    import json
+    plugin_data = json.loads(event.plugin_data)
+    phase_key = f"phase{phase}_missing"
+    return {"missing_numbers": plugin_data.get(phase_key, [])}
+
+@router.post("/api/plugin/{plugin_id}/submit")
+async def submit_plugin_answer(plugin_id: str, data: dict, request: Request, db: Session = Depends(get_db)):
+    """Handle user submission for plugin"""
+    session_token = request.cookies.get("session_token")
+    if not session_token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    participant = db.query(Participant).filter(Participant.session_token == session_token).first()
+    if not participant:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    event = db.query(Event).filter(Event.is_active == True).first()
+    if not event:
+        raise HTTPException(status_code=400, detail="No active event")
+        
+    if event.current_plugin_id != plugin_id or event.current_plugin_state != "running":
+        raise HTTPException(status_code=400, detail="Plugin not running")
+
+    plugin = plugin_manager.get_plugin(plugin_id)
+    if not plugin:
+        raise HTTPException(status_code=404, detail="Plugin not found")
+        
+    await plugin.handle_input(event.id, participant.id, data)
+    return {"status": "ok"}
 
 @router.post("/api/plugin/{plugin_id}/start")
 async def start_plugin(plugin_id: str, request: Request, db: Session = Depends(get_db)):
@@ -189,6 +253,13 @@ async def start_plugin(plugin_id: str, request: Request, db: Session = Depends(g
     db.commit()
     
     await plugin.start(event.id)
+    
+    # Broadcast plugin start to display so it can reload and show game content
+    await manager.broadcast_to_display({
+        "type": "plugin_start",
+        "plugin_id": plugin_id
+    })
+    
     return {"status": "ok"}
 
 import asyncio
@@ -218,6 +289,37 @@ async def plugin_countdown(request: Request, data: dict, db: Session = Depends(g
     asyncio.create_task(run_countdown_and_stop(seconds, request, db))
     
     return {"status": "ok"}
+
+@router.post("/api/plugin/set_phase")
+async def set_plugin_phase(request: Request, data: dict, db: Session = Depends(get_db)):
+    """Set the phase/stage of the current plugin"""
+    session_token = request.cookies.get("session_token")
+    if not session_token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    participant = db.query(Participant).filter(Participant.session_token == session_token).first()
+    if not participant or participant.role != "host":
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    phase = data.get("phase", 1)
+    
+    event = db.query(Event).filter(Event.is_active == True).first()
+    if not event:
+        raise HTTPException(status_code=400, detail="No active event")
+    
+    # Broadcast phase change to display and users
+    await manager.broadcast_to_display({
+        "type": "plugin_phase_change", 
+        "phase": phase,
+        "plugin_id": event.current_plugin_id
+    })
+    await manager.broadcast_to_users({
+        "type": "plugin_phase_change", 
+        "phase": phase,
+        "plugin_id": event.current_plugin_id
+    })
+    
+    return {"status": "ok", "phase": phase}
 
 @router.post("/api/plugin/stop")
 async def stop_plugin(request: Request, db: Session = Depends(get_db)):

@@ -15,11 +15,12 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 # Setup templates
 templates = Jinja2Templates(directory="app/templates")
 
-# from app.plugins import plugin_manager
-#
-# @app.on_event("startup")
-# async def startup_event():
-#    plugin_manager.load_plugins()
+# Load plugins
+from app.plugin_manager import plugin_manager
+
+@app.on_event("startup")
+async def startup_event():
+    plugin_manager.load_plugins()
 
 # Mount plugins static
 import os

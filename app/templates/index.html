@@ -4,56 +4,34 @@
 
 {% block content %}
 <div class="display-page">
-    {% if current_plugin and (current_plugin_state == 'running' or current_plugin_state == 'results') %}
-    <div class="display-header">
-        <div class="header-left">
-            {% if event.logo_url %}
-            <img src="{{ event.logo_url }}" class="header-logo" alt="Logo">
-            {% endif %}
-            <span class="header-title">{{ event.title }}</span>
+    <!-- 首页内容 - 独立于动态容器 -->
+    <div class="display-page-home" id="display-page-home">
+        {% if event.logo_url %}
+        <img src="{{ event.logo_url }}" class="home-logo" alt="Logo">
+        {% endif %}
+        <div class="home-title">{{ event.title }}</div>
+
+        {% if event.status == 'running' %}
+        <div class="home-qr-container">
+            <img src="{{ qr_code }}" class="home-qr-img" alt="Scan to Sign In">
         </div>
-        <div class="header-right">
-            <div class="header-stats">
-                <img src="{{ qr_code }}" class="small-qr">
-                <span><span id="count" class="count-display">{{ participant_count }}</span> 人</span>
-            </div>
+
+        <div class="home-stats">
+            已签到: <span id="count" class="count-display">{{ participant_count }}</span> 人
         </div>
-    </div>
-    {% endif %}
-    
-    <div id="display-content" {% if not current_plugin or current_plugin_state == 'idle' %}style="margin-top: 0; height: 100vh;"{% endif %}>
-        {% if current_plugin and current_plugin_state == 'running' %}
-             <div class="plugin-placeholder" data-plugin-id="{{ current_plugin }}">正在加载互动...</div>
-        {% elif current_plugin and current_plugin_state == 'results' %}
-             <div class="results-placeholder" data-plugin-id="{{ current_plugin }}">正在加载结果...</div>
+
+        <div class="home-url">
+            {{ signin_url }}
+        </div>
         {% else %}
-            <!-- Default Home Content -->
-            <div class="display-page-home">
-                {% if event.logo_url %}
-                <img src="{{ event.logo_url }}" class="home-logo" alt="Logo">
-                {% endif %}
-                <div class="home-title">{{ event.title }}</div>
-                
-                {% if event.status == 'running' %}
-                <div class="home-qr-container">
-                    <img src="{{ qr_code }}" class="home-qr-img" alt="Scan to Sign In">
-                </div>
-                
-                <div class="home-stats">
-                    已签到: <span id="count" class="count-display">{{ participant_count }}</span> 人
-                </div>
-                
-                <div class="home-url">
-                    {{ signin_url }}
-                </div>
-                {% else %}
-                <div style="font-size: 2rem; color: #666; margin-top: 50px;">
-                    <p>培训尚未开始，请等待...</p>
-                </div>
-                {% endif %}
-            </div>
+        <div style="font-size: 2rem; color: #666; margin-top: 50px;">
+            <p>培训尚未开始，请等待...</p>
+        </div>
         {% endif %}
     </div>
+
+    <!-- 动态内容容器 - 互动内容在这里动态加载 -->
+    <div id="dynamic-content-container"></div>
 </div>
 
 <div id="countdown-overlay" class="countdown-overlay" style="display: none;">
@@ -61,47 +39,91 @@
 </div>
 
 <script>
-    // Load initial plugin if present
-    document.addEventListener('DOMContentLoaded', () => {
-        const placeholder = document.querySelector('.plugin-placeholder');
-        if (placeholder) {
-            loadPlugin(placeholder.dataset.pluginId);
+    // ========== 状态轮询机制（主要同步方式） ==========
+    let localState = {
+        plugin_id: null,
+        plugin_state: null,
+        last_check: 0
+    };
+
+    // 定时轮询培训状态（每2秒）
+    setInterval(async () => {
+        try {
+            const response = await fetch('/api/training/status');
+            if (response.ok) {
+                const serverState = await response.json();
+
+                // 检查状态是否改变
+                if (serverState.plugin_id !== localState.plugin_id ||
+                    serverState.plugin_state !== localState.plugin_state) {
+
+                    console.log('State changed:', localState, '->', serverState);
+
+                    // 根据新状态更新display内容
+                    if (serverState.plugin_id && serverState.plugin_state === 'running') {
+                        loadPluginContent(serverState.plugin_id);
+                    } else if (serverState.plugin_id && serverState.plugin_state === 'results') {
+                        loadPluginResults(serverState.plugin_id);
+                    } else if (!serverState.plugin_id || serverState.plugin_state === 'idle') {
+                        // 返回首页
+                        resetToHome();
+                    }
+
+                    // 更新本地状态
+                    localState = serverState;
+                }
+            }
+        } catch (e) {
+            console.error('Failed to poll training status', e);
         }
-        
-        const resultsPlaceholder = document.querySelector('.results-placeholder');
-        if (resultsPlaceholder) {
-            showResults(resultsPlaceholder.dataset.pluginId);
-        }
-    });
+    }, 2000);  // 2秒轮询一次
+
+    // ========== WebSocket（作为辅助/实时更新） ==========
 
     // WebSocket Connection
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const wsUrl = `${protocol}://${window.location.host}/ws/display`;
     const ws = new WebSocket(wsUrl);
 
-    ws.onmessage = function(event) {
+    ws.onmessage = function (event) {
         const data = JSON.parse(event.data);
         if (data.type === 'stats_update') {
-             // Update count in both header and home body if they exist
-             // Use querySelectorAll to update all instances if multiple exist (unlikely but safe)
-             const countEls = document.querySelectorAll('#count');
-             countEls.forEach(el => el.innerText = data.count);
-             
-             // Also update header stats specifically if ID is different
-             // In current template, both use id="count". 
-             // Ideally we should use class="count-display"
-             const countClassEls = document.querySelectorAll('.count-display');
-             countClassEls.forEach(el => el.innerText = data.count);
+            // Update count in both header and home body if they exist
+            // Use querySelectorAll to update all instances if multiple exist (unlikely but safe)
+            const countEls = document.querySelectorAll('#count');
+            countEls.forEach(el => el.innerText = data.count);
+
+            // Also update header stats specifically if ID is different
+            // In current template, both use id="count". 
+            // Ideally we should use class="count-display"
+            const countClassEls = document.querySelectorAll('.count-display');
+            countClassEls.forEach(el => el.innerText = data.count);
         } else if (data.type === 'plugin_start') {
-             location.reload(); 
+            // 动态加载插件内容，不跳转URL
+            loadPluginContent(data.plugin_id);
         } else if (data.type === 'plugin_end') {
-             document.getElementById('countdown-overlay').style.display = 'none';
-             location.reload(); 
+            document.getElementById('countdown-overlay').style.display = 'none';
+            loadPluginResults(data.plugin_id);
         } else if (data.type === 'countdown_start') {
-              startCountdown(data.seconds);
-         } else if (data.type === 'plugin_reset') {
-              location.reload();
-         }
+            startCountdown(data.seconds);
+        } else if (data.type === 'plugin_reset') {
+            resetToHome();
+        } else if (data.type === 'plugin_phase_change') {
+            // Notify embedded plugin content about phase change
+            const iframe = document.querySelector('iframe');
+            if (iframe && iframe.contentWindow) {
+                iframe.contentWindow.postMessage({ type: 'phase_change', phase: data.phase }, '*');
+            }
+            // Also try direct function call if plugin sets it up
+            if (window.pluginPhaseListener) {
+                window.pluginPhaseListener(data.phase);
+            }
+            // Try to find and call setPhase in dynamic content
+            const container = document.getElementById('dynamic-content-container');
+            if (container && typeof setPhase === 'function') {
+                setPhase(data.phase);
+            }
+        }
     };
 
     function startCountdown(seconds) {
@@ -109,7 +131,7 @@
         const number = document.getElementById('countdown-number');
         overlay.style.display = 'flex';
         number.innerText = seconds;
-        
+
         let remaining = seconds;
         const interval = setInterval(() => {
             remaining--;
@@ -123,39 +145,100 @@
         }, 1000);
     }
 
-    async function loadPlugin(pluginId) {
+
+    // 动态加载插件内容到容器中
+    async function loadPluginContent(pluginId) {
         try {
             const response = await fetch(`/display/${pluginId}`);
             if (response.ok) {
                 const html = await response.text();
-                const container = document.getElementById('display-content');
+
+                // Hide home page
+                const homePage = document.getElementById('display-page-home');
+                if (homePage) {
+                    homePage.style.display = 'none';
+                }
+
+                // Load plugin content
+                const container = document.getElementById('dynamic-content-container');
                 container.innerHTML = html;
-                
-                // Execute scripts
-                Array.from(container.querySelectorAll('script')).forEach(oldScript => {
-                    const newScript = document.createElement('script');
-                    Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
-                    newScript.appendChild(document.createTextNode(oldScript.innerHTML));
-                    oldScript.parentNode.replaceChild(newScript, oldScript);
-                });
+                executeScripts(container);
+                console.log('Plugin loaded:', pluginId);
             }
         } catch (e) {
-            console.error("Failed to load plugin", e);
+            console.error("Failed to load plugin content", e);
         }
     }
 
-    function showResults(pluginId) {
-        // Fetch results HTML from server
-        fetch(`/display/results/${pluginId}`)
-            .then(response => response.text())
-            .then(html => {
-                const container = document.getElementById('display-content');
+    // 加载插件结果
+    async function loadPluginResults(pluginId) {
+        try {
+            const response = await fetch(`/display/results/${pluginId}`);
+            if (response.ok) {
+                const html = await response.text();
+
+                // Hide home page
+                const homePage = document.getElementById('display-page-home');
+                if (homePage) {
+                    homePage.style.display = 'none';
+                }
+
+                // Load results content  
+                const container = document.getElementById('dynamic-content-container');
                 container.innerHTML = html;
-            })
-            .catch(err => console.error("Failed to load results", err));
+                executeScripts(container);
+            }
+        } catch (e) {
+            console.error("Failed to load results", e);
+        }
     }
-    
-    ws.onclose = function() {
+
+    // 返回签到首页
+    async function resetToHome() {
+        // Clear plugin content
+        const container = document.getElementById('dynamic-content-container');
+        container.innerHTML = '';
+
+        // Show home page
+        const homePage = document.getElementById('display-page-home');
+        if (homePage) {
+            homePage.style.display = 'flex';
+        }
+
+        // Fetch and update participant count
+        try {
+            const response = await fetch('/api/training/status');
+            if (response.ok) {
+                const data = await response.json();
+                // Update all count displays
+                const countEls = document.querySelectorAll('#count, .count-display');
+                countEls.forEach(el => {
+                    if (el) el.innerText = data.participant_count || '0';
+                });
+            }
+        } catch (e) {
+            console.error('Failed to fetch participant count', e);
+        }
+
+        console.log('Display reset to home page');
+    }
+
+    // 执行动态加载HTML中的脚本
+    function executeScripts(container) {
+        const scripts = container.querySelectorAll('script');
+        scripts.forEach(oldScript => {
+            const newScript = document.createElement('script');
+            Array.from(oldScript.attributes).forEach(attr => {
+                newScript.setAttribute(attr.name, attr.value);
+            });
+            newScript.textContent = oldScript.textContent;
+            oldScript.parentNode.replaceChild(newScript, oldScript);
+        });
+    }
+
+
+
+    ws.onclose = function () {
         console.log("WebSocket disconnected. Retrying in 5s...");
         setTimeout(() => location.reload(), 5000);
     };
