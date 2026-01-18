@@ -1,0 +1,32 @@
+<div class="find-number-mobile">
+    <h2>找数字规律</h2>
+    <p>请输入大屏幕上的问号代表的数字：</p>
+    <input type="number" class="number-input" style="width: 100%; padding: 10px; margin: 10px 0;">
+    <button class="btn submit-btn" onclick="submitAnswer()">提交</button>
+</div>
+<script>
+    async function submitAnswer() {
+        const val = document.querySelector('.number-input').value;
+        const btn = document.querySelector('.submit-btn');
+        
+        try {
+            const response = await fetch('/api/plugin/demo_finder/submit', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ value: val })
+            });
+            
+            if (response.ok) {
+                btn.innerText = "已提交";
+                btn.disabled = true;
+            } else {
+                alert("提交失败");
+            }
+        } catch (e) {
+            console.error(e);
+            alert("提交出错");
+        }
+    }
+</script>

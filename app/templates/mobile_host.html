@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block title %}主持人控制台{% endblock %}
+
+{% block content %}
+<div class="mobile-page">
+    <div class="mobile-card">
+        <h3>主持人控制台</h3>
+        <p>你好，{{ participant.name }}</p>
+    </div>
+    
+    <div class="mobile-card">
+        <h4>互动控制</h4>
+        {% if plugins %}
+            {% for plugin in plugins %}
+            <div style="border: 1px solid #eee; padding: 10px; margin-bottom: 10px; border-radius: 4px;">
+                <strong>{{ plugin.name }}</strong>
+                <br>
+                <small>{{ plugin.meta.get('description', '') }}</small>
+                <div style="margin-top: 5px;">
+                    <!-- Use htmx or fetch to load plugin control into a container, or iframe? 
+                         Requirements say GET /host/{plugin_id}.
+                         For MVP, let's link to it or load it via AJAX.
+                         Better: Link to a separate page or expand it here. 
+                         Let's use a link for now.
+                    -->
+                    <button class="btn" onclick="loadPlugin('{{ plugin.plugin_id }}')">加载互动</button>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <p>暂无可用互动插件。</p>
+        {% endif %}
+    </div>
+
+    <div class="mobile-card" id="plugin-container" style="display: none;">
+        <h4>当前互动</h4>
+        <div id="plugin-content"></div>
+        <div style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
+            <button class="btn" style="background-color: #dc3545;" onclick="stopPlugin()">直接结束 (显示结果)</button>
+            <div style="display: flex; gap: 5px; width: 100%;">
+                <input type="number" id="countdown-seconds" placeholder="秒" style="width: 80px; padding: 10px;" value="10">
+                <button class="btn" style="background-color: #ffc107; color: black;" onclick="startCountdown()">倒计时结束</button>
+            </div>
+            <button class="btn" style="background-color: #6c757d;" onclick="closePlugin()">关闭控制台</button>
+        </div>
+    </div>
+
+    <script>
+        async function loadPlugin(pluginId) {
+            // ... (keep existing)
+            // 1. Tell Display to load plugin
+            // TODO: WebSocket message to display
+            
+            // 2. Load Host Control
+            const response = await fetch(`/host/${pluginId}`);
+            const html = await response.text();
+            const container = document.getElementById('plugin-content');
+            container.innerHTML = html;
+
+             // Execute scripts
+             Array.from(container.querySelectorAll('script')).forEach(oldScript => {
+                 const newScript = document.createElement('script');
+                 Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
+                 newScript.appendChild(document.createTextNode(oldScript.innerHTML));
+                 oldScript.parentNode.replaceChild(newScript, oldScript);
+             });
+            document.getElementById('plugin-container').style.display = 'block';
+        }
+        
+        async function closePlugin() {
+            if(!confirm("确定要关闭控制台并重置大屏吗？")) return;
+            try {
+                const response = await fetch(`/api/plugin/reset`, { method: 'POST' });
+                if (response.ok) {
+                    document.getElementById('plugin-container').style.display = 'none';
+                    document.getElementById('plugin-content').innerHTML = '';
+                    alert('大屏已重置');
+                } else {
+                    alert('操作失败');
+                }
+            } catch (e) {
+                console.error(e);
+                alert('请求出错');
+            }
+        }
+
+        async function startPlugin(pluginId) {
+            try {
+                const response = await fetch(`/api/plugin/${pluginId}/start`, { method: 'POST' });
+                if (response.ok) {
+                    alert('互动已开启');
+                } else {
+                    alert('开启失败');
+                }
+            } catch (e) {
+                console.error(e);
+                alert('请求出错');
+            }
+        }
+
+        async function stopPlugin() {
+             if(!confirm("确定要直接结束当前互动并显示结果吗？")) return;
+             try {
+                const response = await fetch(`/api/plugin/stop`, { method: 'POST' });
+                if (response.ok) {
+                    alert('互动已结束');
+                } else {
+                    alert('操作失败');
+                }
+            } catch (e) {
+                console.error(e);
+                alert('请求出错');
+            }
+        }
+
+        async function startCountdown() {
+            const seconds = document.getElementById('countdown-seconds').value;
+            if (!seconds || seconds <= 0) {
+                alert("请输入有效的倒计时秒数");
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/plugin/countdown`, { 
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ seconds: parseInt(seconds) })
+                });
+                
+                if (response.ok) {
+                    alert('倒计时已开始');
+                } else {
+                    alert('操作失败');
+                }
+            } catch (e) {
+                console.error(e);
+                alert('请求出错');
+            }
+        }
+    </script>
+    
+    <div class="mobile-card">
+        <h4>当前状态</h4>
+        <p>大屏内容: 首页/签到</p>
+    </div>
+</div>
+{% endblock %}

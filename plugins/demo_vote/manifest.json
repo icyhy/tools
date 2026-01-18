@@ -1,0 +1,8 @@
+{
+    "name": "投票插件",
+    "description": "现场投票，支持自定义选项",
+    "config": {
+        "question": "您最喜欢的编程语言是？",
+        "options": ["Python", "JavaScript", "Go", "Rust"]
+    }
+}

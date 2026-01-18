@@ -1,0 +1,21 @@
+<div class="results-view" style="text-align:center; padding:50px;">
+    <h2>{{ results.question }}</h2>
+    <div style="margin-top: 30px; display: flex; flex-direction: column; align-items: center; gap: 15px;">
+        {% for option, count in results.counts.items() %}
+        <div style="width: 80%; max-width: 600px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                <span>{{ option }}</span>
+                <span>{{ count }} 票</span>
+            </div>
+            <div style="background: #333; height: 20px; border-radius: 10px; overflow: hidden;">
+                {% set percent = (count / results.total * 100) if results.total > 0 else 0 %}
+                <div style="background: #28a745; height: 100%; width: {{ percent }}%;"></div>
+            </div>
+        </div>
+        {% endfor %}
+        
+        <div style="margin-top: 20px; font-size: 1.2rem;">
+            总票数: <strong>{{ results.total }}</strong>
+        </div>
+    </div>
+</div>

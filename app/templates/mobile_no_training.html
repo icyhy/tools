@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}暂无培训{% endblock %}
+
+{% block content %}
+<div class="mobile-page">
+    <div class="mobile-card" style="text-align: center; margin-top: 50px;">
+        <h2>暂无进行中的培训</h2>
+        <p style="color: #666; margin: 20px 0;">
+            {% if event %}
+                当前培训状态: 
+                {% if event.status == 'pending' %}未开始{% endif %}
+                {% if event.status == 'ended' %}已结束{% endif %}
+            {% else %}
+                没有激活的培训活动
+            {% endif %}
+        </p>
+        <p>请等待管理员开启培训。</p>
+        
+        <hr>
+        <p><small>如果您是主持人，请联系管理员开启。</small></p>
+        <!-- Optional: Allow Host Login anyway? For MVP let's follow requirement strictly. 
+             "Sign in page ... shows no training". 
+             Implies normal users can't sign in. Host might need a backdoor or Admin panel to start it.
+             The Admin panel is separate (/admin).
+        -->
+    </div>
+</div>
+{% endblock %}

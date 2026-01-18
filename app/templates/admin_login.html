@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}管理员登录{% endblock %}
+
+{% block content %}
+<div class="mobile-page">
+    <div class="mobile-card" style="max-width: 400px; margin: 50px auto;">
+        <h2 style="text-align: center;">后台管理登录</h2>
+        
+        <form action="/admin/login" method="post">
+            <div class="form-group">
+                <label for="password">管理员密码</label>
+                <input type="password" id="password" name="password" required placeholder="默认: admin">
+            </div>
+            
+            <button type="submit" class="btn">登录</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

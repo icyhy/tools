@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}个人中心{% endblock %}
+
+{% block content %}
+<div class="mobile-page">
+    <div class="mobile-card">
+        <h3>你好，{{ participant.name }}</h3>
+        <p>部门: {{ participant.department or '未填写' }}</p>
+        <p>随机码: <strong>{{ participant.code4 }}</strong></p>
+        <hr>
+        <p>当前状态: <span style="color: green;">已签到</span></p>
+        <p>请关注大屏幕，等待主持人开启互动。</p>
+    </div>
+    
+    <div class="mobile-card">
+        <h4>互动区</h4>
+        <div id="interactive-area">
+            {% if current_plugin %}
+                <div class="plugin-placeholder" data-plugin-id="{{ current_plugin }}">正在加载互动...</div>
+            {% else %}
+                <p style="color: #666; text-align: center;">暂无进行中的互动</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+    // Load initial plugin if present
+    document.addEventListener('DOMContentLoaded', () => {
+        const placeholder = document.querySelector('.plugin-placeholder');
+        if (placeholder) {
+            loadPlugin(placeholder.dataset.pluginId);
+        }
+    });
+
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const wsUrl = `${protocol}://${window.location.host}/ws/user`;
+    const ws = new WebSocket(wsUrl);
+
+    ws.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        if (data.type === 'plugin_start') {
+             loadPlugin(data.plugin_id);
+        } else if (data.type === 'plugin_end') {
+             document.getElementById('interactive-area').innerHTML = '<p style="color: #666; text-align: center;">互动已结束，请看大屏幕结果</p>';
+        } else if (data.type === 'plugin_reset') {
+             location.reload();
+        }
+    };
+
+    async function loadPlugin(pluginId) {
+        try {
+            const response = await fetch(`/user/${pluginId}`);
+            if (response.ok) {
+                const html = await response.text();
+                const container = document.getElementById('interactive-area');
+                container.innerHTML = html;
+                
+                // Execute scripts
+                Array.from(container.querySelectorAll('script')).forEach(oldScript => {
+                    const newScript = document.createElement('script');
+                    Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
+                    newScript.appendChild(document.createTextNode(oldScript.innerHTML));
+                    oldScript.parentNode.replaceChild(newScript, oldScript);
+                });
+            }
+        } catch (e) {
+            console.error("Failed to load plugin", e);
+        }
+    }
+</script>
+{% endblock %}

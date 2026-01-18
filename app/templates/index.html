@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}{{ event.title }} - 大屏{% endblock %}
+
+{% block content %}
+<div class="display-page">
+    {% if current_plugin and (current_plugin_state == 'running' or current_plugin_state == 'results') %}
+    <div class="display-header">
+        <div class="header-left">
+            {% if event.logo_url %}
+            <img src="{{ event.logo_url }}" class="header-logo" alt="Logo">
+            {% endif %}
+            <span class="header-title">{{ event.title }}</span>
+        </div>
+        <div class="header-right">
+            <div class="header-stats">
+                <img src="{{ qr_code }}" class="small-qr">
+                <span><span id="count" class="count-display">{{ participant_count }}</span> 人</span>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    
+    <div id="display-content" {% if not current_plugin or current_plugin_state == 'idle' %}style="margin-top: 0; height: 100vh;"{% endif %}>
+        {% if current_plugin and current_plugin_state == 'running' %}
+             <div class="plugin-placeholder" data-plugin-id="{{ current_plugin }}">正在加载互动...</div>
+        {% elif current_plugin and current_plugin_state == 'results' %}
+             <div class="results-placeholder" data-plugin-id="{{ current_plugin }}">正在加载结果...</div>
+        {% else %}
+            <!-- Default Home Content -->
+            <div class="display-page-home">
+                {% if event.logo_url %}
+                <img src="{{ event.logo_url }}" class="home-logo" alt="Logo">
+                {% endif %}
+                <div class="home-title">{{ event.title }}</div>
+                
+                {% if event.status == 'running' %}
+                <div class="home-qr-container">
+                    <img src="{{ qr_code }}" class="home-qr-img" alt="Scan to Sign In">
+                </div>
+                
+                <div class="home-stats">
+                    已签到: <span id="count" class="count-display">{{ participant_count }}</span> 人
+                </div>
+                
+                <div class="home-url">
+                    {{ signin_url }}
+                </div>
+                {% else %}
+                <div style="font-size: 2rem; color: #666; margin-top: 50px;">
+                    <p>培训尚未开始，请等待...</p>
+                </div>
+                {% endif %}
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<div id="countdown-overlay" class="countdown-overlay" style="display: none;">
+    <span id="countdown-number"></span>
+</div>
+
+<script>
+    // Load initial plugin if present
+    document.addEventListener('DOMContentLoaded', () => {
+        const placeholder = document.querySelector('.plugin-placeholder');
+        if (placeholder) {
+            loadPlugin(placeholder.dataset.pluginId);
+        }
+        
+        const resultsPlaceholder = document.querySelector('.results-placeholder');
+        if (resultsPlaceholder) {
+            showResults(resultsPlaceholder.dataset.pluginId);
+        }
+    });
+
+    // WebSocket Connection
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const wsUrl = `${protocol}://${window.location.host}/ws/display`;
+    const ws = new WebSocket(wsUrl);
+
+    ws.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        if (data.type === 'stats_update') {
+             // Update count in both header and home body if they exist
+             // Use querySelectorAll to update all instances if multiple exist (unlikely but safe)
+             const countEls = document.querySelectorAll('#count');
+             countEls.forEach(el => el.innerText = data.count);
+             
+             // Also update header stats specifically if ID is different
+             // In current template, both use id="count". 
+             // Ideally we should use class="count-display"
+             const countClassEls = document.querySelectorAll('.count-display');
+             countClassEls.forEach(el => el.innerText = data.count);
+        } else if (data.type === 'plugin_start') {
+             location.reload(); 
+        } else if (data.type === 'plugin_end') {
+             document.getElementById('countdown-overlay').style.display = 'none';
+             location.reload(); 
+        } else if (data.type === 'countdown_start') {
+              startCountdown(data.seconds);
+         } else if (data.type === 'plugin_reset') {
+              location.reload();
+         }
+    };
+
+    function startCountdown(seconds) {
+        const overlay = document.getElementById('countdown-overlay');
+        const number = document.getElementById('countdown-number');
+        overlay.style.display = 'flex';
+        number.innerText = seconds;
+        
+        let remaining = seconds;
+        const interval = setInterval(() => {
+            remaining--;
+            if (remaining > 0) {
+                number.innerText = remaining;
+            } else {
+                clearInterval(interval);
+                overlay.style.display = 'none';
+                // Server should send plugin_end shortly
+            }
+        }, 1000);
+    }
+
+    async function loadPlugin(pluginId) {
+        try {
+            const response = await fetch(`/display/${pluginId}`);
+            if (response.ok) {
+                const html = await response.text();
+                const container = document.getElementById('display-content');
+                container.innerHTML = html;
+                
+                // Execute scripts
+                Array.from(container.querySelectorAll('script')).forEach(oldScript => {
+                    const newScript = document.createElement('script');
+                    Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
+                    newScript.appendChild(document.createTextNode(oldScript.innerHTML));
+                    oldScript.parentNode.replaceChild(newScript, oldScript);
+                });
+            }
+        } catch (e) {
+            console.error("Failed to load plugin", e);
+        }
+    }
+
+    function showResults(pluginId) {
+        // Fetch results HTML from server
+        fetch(`/display/results/${pluginId}`)
+            .then(response => response.text())
+            .then(html => {
+                const container = document.getElementById('display-content');
+                container.innerHTML = html;
+            })
+            .catch(err => console.error("Failed to load results", err));
+    }
+    
+    ws.onclose = function() {
+        console.log("WebSocket disconnected. Retrying in 5s...");
+        setTimeout(() => location.reload(), 5000);
+    };
+
+    // Fallback polling (keep it just in case)
+    setInterval(async () => {
+        try {
+            const response = await fetch('/api/stats/count');
+            const data = await response.json();
+            document.getElementById('count').innerText = data.count;
+        } catch (e) {
+            console.error("Failed to update stats", e);
+        }
+    }, 10000); // Slower polling
+</script>
+{% endblock %}

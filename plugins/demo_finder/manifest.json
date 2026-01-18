@@ -1,0 +1,7 @@
+{
+    "name": "找数字规律",
+    "description": "找出缺失的数字",
+    "config": {
+        "duration": 60
+    }
+}

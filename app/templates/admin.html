@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}管理员配置{% endblock %}
+
+{% block content %}
+<div class="container" style="padding: 20px; max-width: 800px; margin: 0 auto;">
+    <h1>培训配置管理</h1>
+    
+    <div class="mobile-card">
+        <h3>基本设置</h3>
+        <form action="/api/admin/update" method="post">
+            <div class="form-group">
+                <label>培训状态</label>
+                <select name="status" style="width: 100%; padding: 10px; margin-bottom: 10px;">
+                    <option value="pending" {% if event.status == 'pending' %}selected{% endif %}>未开始 (Pending)</option>
+                    <option value="running" {% if event.status == 'running' %}selected{% endif %}>进行中 (Running)</option>
+                    <option value="ended" {% if event.status == 'ended' %}selected{% endif %}>已结束 (Ended)</option>
+                </select>
+                <small style="color: #666;">只有"进行中"状态才会显示签到二维码。</small>
+            </div>
+            
+            <div class="form-group">
+                <label>培训主题</label>
+                <input type="text" name="title" value="{{ event.title }}" required>
+            </div>
+            
+            <div class="form-group">
+                <label>公司 Logo URL (或 Base64)</label>
+                <input type="text" name="logo_url" value="{{ event.logo_url or '' }}" placeholder="http://example.com/logo.png">
+            </div>
+
+            <div class="form-group">
+                <label>可用互动插件</label>
+                <div style="border: 1px solid #ddd; padding: 10px; border-radius: 4px;">
+                    {% for p_id, plugin in plugins.items() %}
+                    <div style="margin-bottom: 5px;">
+                        <input type="checkbox" id="p_{{ p_id }}" name="enabled_plugins" value="{{ p_id }}" 
+                            {% if not event.enabled_plugins or p_id in event.enabled_plugins %}checked{% endif %}>
+                        <label for="p_{{ p_id }}" style="display: inline; font-weight: normal;">{{ plugin.name }}</label>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>主持人密码</label>
+                <input type="text" name="host_password" value="{{ event.host_password_hash }}" required>
+            </div>
+
+            <div class="form-group">
+                <label>管理员密码</label>
+                <input type="text" name="admin_password" value="{{ event.admin_password_hash }}" required>
+            </div>
+            
+            <button type="submit" class="btn">保存设置</button>
+        </form>
+    </div>
+
+    <div class="mobile-card">
+        <h3>插件内容配置</h3>
+        {% for p_id, plugin in plugins.items() %}
+        <div style="margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 10px;">
+            <h4>{{ plugin.name }} ({{ p_id }})</h4>
+            <form action="/api/admin/plugin_config" method="post">
+                <input type="hidden" name="plugin_id" value="{{ p_id }}">
+                <div class="form-group">
+                    <label>JSON 配置</label>
+                    <textarea name="config_json" rows="5" style="width: 100%; padding: 10px; font-family: monospace;">
+                        {%- if event.plugins_config and event.plugins_config.get(p_id) -%}
+                            {{ event.plugins_config.get(p_id) | tojson(indent=2) }}
+                        {%- else -%}
+                            {{ plugin.meta.get('config', {}) | tojson(indent=2) }}
+                        {%- endif -%}
+                    </textarea>
+                </div>
+                <button type="submit" class="btn" style="background-color: #17a2b8;">更新配置</button>
+            </form>
+        </div>
+        {% endfor %}
+    </div>
+    
+    <div class="mobile-card">
+        <h3>数据统计</h3>
+        <p>当前签到人数: <strong>{{ count }}</strong></p>
+        <div style="display: flex; gap: 10px;">
+             <!-- Future Export Button -->
+            <button class="btn" style="background-color: #28a745;" onclick="alert('导出功能开发中')">导出数据</button>
+        </div>
+    </div>
+    
+    <div class="mobile-card" style="border: 1px solid red;">
+        <h3 style="color: red;">危险操作</h3>
+        <p>重置培训将归档当前活动数据，并开启新的签到。</p>
+        <form action="/api/admin/reset" method="post" onsubmit="return confirm('确定要重置培训吗？所有当前签到数据将不再显示。');">
+            <button type="submit" class="btn" style="background-color: #dc3545;">重置培训</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,61 @@
+<div class="vote-plugin-user">
+    <h3 id="vote-question">加载中...</h3>
+    <div id="vote-options"></div>
+</div>
+
+<script>
+    async function loadConfig() {
+        try {
+            const response = await fetch('/api/plugin/demo_vote/config');
+            const config = await response.json();
+            
+            document.getElementById('vote-question').innerText = config.question;
+            const container = document.getElementById('vote-options');
+            
+            config.options.forEach(opt => {
+                const btn = document.createElement('button');
+                btn.className = "btn";
+                btn.style.marginBottom = "10px";
+                btn.style.backgroundColor = "#fff";
+                btn.style.color = "#333";
+                btn.style.border = "1px solid #ddd";
+                btn.innerText = opt;
+                btn.onclick = () => submitVote(opt, btn);
+                container.appendChild(btn);
+            });
+        } catch (e) {
+            console.error(e);
+        }
+    }
+    
+    async function submitVote(value, btnElement) {
+        try {
+            const response = await fetch('/api/plugin/demo_vote/submit', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ value: value })
+            });
+            
+            if (response.ok) {
+                alert("投票成功");
+                // Disable all buttons
+                const btns = document.querySelectorAll('#vote-options button');
+                btns.forEach(b => {
+                    b.disabled = true;
+                    b.style.opacity = 0.5;
+                });
+                btnElement.style.backgroundColor = "#28a745";
+                btnElement.style.color = "#fff";
+            } else {
+                alert("提交失败");
+            }
+        } catch (e) {
+            console.error(e);
+            alert("提交出错");
+        }
+    }
+    
+    loadConfig();
+</script>

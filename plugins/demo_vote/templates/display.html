@@ -1,0 +1,43 @@
+<div class="vote-plugin-screen" style="text-align: center; padding: 50px;">
+    <h1>现场投票</h1>
+    <h2 id="vote-question"></h2>
+    <div id="vote-options" style="display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; margin-top: 50px;">
+        <!-- Options rendered via JS -->
+    </div>
+</div>
+
+<script>
+    // Fetch config to render
+    // Note: In real app, we might pass config via template context or API
+    // For MVP, let's fetch a lightweight config endpoint or assume embedded
+    // Actually, we can fetch from a new endpoint /api/plugin/{plugin_id}/config
+    // OR we just embed it if the server passed it.
+    // The server passed TemplateResponse. We can inject config there.
+    
+    // Let's implement a simple fetch for config or hardcode for MVP if needed.
+    // Better: Add /api/plugin/{plugin_id}/config endpoint.
+    
+    async function loadConfig() {
+        try {
+            const response = await fetch('/api/plugin/demo_vote/config');
+            const config = await response.json();
+            
+            document.getElementById('vote-question').innerText = config.question;
+            const container = document.getElementById('vote-options');
+            
+            config.options.forEach(opt => {
+                const div = document.createElement('div');
+                div.style.border = "2px solid #fff";
+                div.style.padding = "20px";
+                div.style.borderRadius = "10px";
+                div.style.fontSize = "2rem";
+                div.innerText = opt;
+                container.appendChild(div);
+            });
+        } catch (e) {
+            console.error(e);
+        }
+    }
+    
+    loadConfig();
+</script>
