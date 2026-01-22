@@ -5,6 +5,7 @@ from app.database import engine, Base
 from app.websockets import manager
 
 # Create tables
+import app.models
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="互动培训系统")
