@@ -5,28 +5,29 @@
 {% block content %}
 <div class="container" style="padding: 20px; max-width: 800px; margin: 0 auto;">
     <h1>培训配置管理</h1>
-    
+
     <div class="mobile-card">
         <h3>基本设置</h3>
         <form action="/api/admin/update" method="post">
             <div class="form-group">
                 <label>培训状态</label>
                 <select name="status" style="width: 100%; padding: 10px; margin-bottom: 10px;">
-                    <option value="pending" {% if event.status == 'pending' %}selected{% endif %}>未开始 (Pending)</option>
-                    <option value="running" {% if event.status == 'running' %}selected{% endif %}>进行中 (Running)</option>
-                    <option value="ended" {% if event.status == 'ended' %}selected{% endif %}>已结束 (Ended)</option>
+                    <option value="pending" {% if event.status=='pending' %}selected{% endif %}>未开始 (Pending)</option>
+                    <option value="running" {% if event.status=='running' %}selected{% endif %}>进行中 (Running)</option>
+                    <option value="ended" {% if event.status=='ended' %}selected{% endif %}>已结束 (Ended)</option>
                 </select>
                 <small style="color: #666;">只有"进行中"状态才会显示签到二维码。</small>
             </div>
-            
+
             <div class="form-group">
                 <label>培训主题</label>
                 <input type="text" name="title" value="{{ event.title }}" required>
             </div>
-            
+
             <div class="form-group">
                 <label>公司 Logo URL (或 Base64)</label>
-                <input type="text" name="logo_url" value="{{ event.logo_url or '' }}" placeholder="http://example.com/logo.png">
+                <input type="text" name="logo_url" value="{{ event.logo_url or '' }}"
+                    placeholder="http://example.com/logo.png">
             </div>
 
             <div class="form-group">
@@ -34,9 +35,10 @@
                 <div style="border: 1px solid #ddd; padding: 10px; border-radius: 4px;">
                     {% for p_id, plugin in plugins.items() %}
                     <div style="margin-bottom: 5px;">
-                        <input type="checkbox" id="p_{{ p_id }}" name="enabled_plugins" value="{{ p_id }}" 
-                            {% if not event.enabled_plugins or p_id in event.enabled_plugins %}checked{% endif %}>
-                        <label for="p_{{ p_id }}" style="display: inline; font-weight: normal;">{{ plugin.name }}</label>
+                        <input type="checkbox" id="p_{{ p_id }}" name="enabled_plugins" value="{{ p_id }}" {% if not
+                            event.enabled_plugins or p_id in event.enabled_plugins %}checked{% endif %}>
+                        <label for="p_{{ p_id }}" style="display: inline; font-weight: normal;">{{ plugin.name
+                            }}</label>
                     </div>
                     {% endfor %}
                 </div>
@@ -51,13 +53,139 @@
                 <label>管理员密码</label>
                 <input type="text" name="admin_password" value="{{ event.admin_password_hash }}" required>
             </div>
-            
+
             <button type="submit" class="btn">保存设置</button>
         </form>
     </div>
 
     <div class="mobile-card">
-        <h3>插件内容配置</h3>
+        <h3>自定义互动内容</h3>
+        <div id="custom-interactions-list">
+            Loading...
+        </div>
+        <button class="btn" style="background-color: #28a745; margin-top: 10px;" onclick="showAddModal()">+
+            新建互动</button>
+    </div>
+
+    <!-- Add Interaction Modal -->
+    <div id="add-modal"
+        style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+        <div
+            style="background: white; width: 90%; max-width: 500px; margin: 50px auto; padding: 20px; border-radius: 8px;">
+            <h3>新建互动</h3>
+            <form onsubmit="createInteraction(event)">
+                <div class="form-group">
+                    <label>类型</label>
+                    <select id="new-type" style="width: 100%; padding: 8px;">
+                        <option value="survey">AI 工具问卷 (Survey)</option>
+                        <option value="vote">投票 (Vote)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>互动名称</label>
+                    <input type="text" id="new-name" placeholder="例如: 最佳员工投票" required
+                        style="width: 100%; padding: 8px;">
+                </div>
+                <div class="form-group">
+                    <label>问题内容</label>
+                    <input type="text" id="new-question" placeholder="例如: 谁是年度最佳员工?" required
+                        style="width: 100%; padding: 8px;">
+                </div>
+                <div class="form-group">
+                    <label>选项 (每行一个)</label>
+                    <textarea id="new-options" rows="5" placeholder="张三&#10;李四&#10;王五" required
+                        style="width: 100%; padding: 8px;"></textarea>
+                </div>
+                <div style="text-align: right; margin-top: 15px;">
+                    <button type="button" class="btn" style="background-color: #6c757d; width: auto;"
+                        onclick="closeAddModal()">取消</button>
+                    <button type="submit" class="btn" style="width: auto;">创建</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        async function loadInteractions() {
+            try {
+                const res = await fetch('/api/admin/interactions');
+                const list = await res.json();
+                const container = document.getElementById('custom-interactions-list');
+
+                if (list.length === 0) {
+                    container.innerHTML = '<p style="color: #999;">暂无自定义互动</p>';
+                    return;
+                }
+
+                container.innerHTML = list.map(item => `
+                    <div style="border: 1px solid #eee; padding: 10px; margin-bottom: 5px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <strong>${item.name}</strong> 
+                            <span style="font-size: 0.8em; color: white; background: ${item.type === 'vote' ? '#17a2b8' : '#6610f2'}; padding: 2px 5px; border-radius: 3px;">${item.type}</span>
+                            <div style="font-size: 0.9em; color: #666;">${item.question}</div>
+                        </div>
+                        <button onclick="deleteInteraction('${item.id}')" style="color: red; border: none; background: none; cursor: pointer;">删除</button>
+                    </div>
+                `).join('');
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function showAddModal() {
+            document.getElementById('add-modal').style.display = 'block';
+        }
+
+        function closeAddModal() {
+            document.getElementById('add-modal').style.display = 'none';
+        }
+
+        async function createInteraction(e) {
+            e.preventDefault();
+            const type = document.getElementById('new-type').value;
+            const name = document.getElementById('new-name').value;
+            const question = document.getElementById('new-question').value;
+            const optionsText = document.getElementById('new-options').value;
+            const options = optionsText.split('\n').map(o => o.trim()).filter(o => o);
+
+            try {
+                const res = await fetch('/api/admin/interactions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type, name, question, options })
+                });
+
+                if (res.ok) {
+                    closeAddModal();
+                    loadInteractions();
+                    // Clear form
+                    document.getElementById('new-name').value = '';
+                    document.getElementById('new-question').value = '';
+                    document.getElementById('new-options').value = '';
+                    alert('创建成功，请在"可用互动插件"中勾选启用该互动。');
+                    location.reload(); // Reload to update checkbox list
+                } else {
+                    alert('创建失败');
+                }
+            } catch (e) {
+                console.error(e);
+                alert('错误: ' + e.message);
+            }
+        }
+
+        async function deleteInteraction(id) {
+            if (!confirm('确定要删除这个互动吗?')) return;
+            await fetch(`/api/admin/interactions/${id}`, { method: 'DELETE' });
+            loadInteractions();
+            location.reload();
+        }
+
+        // Initial load
+        loadInteractions();
+    </script>
+
+    <div class="mobile-card">
+        <h3>插件内容配置 (高级)</h3>
         {% for p_id, plugin in plugins.items() %}
         <div style="margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 10px;">
             <h4>{{ plugin.name }} ({{ p_id }})</h4>
@@ -78,21 +206,21 @@
         </div>
         {% endfor %}
     </div>
-    
+
     <div class="mobile-card">
         <h3>互动入口 (大屏)</h3>
         <a href="/display/find_numbers" target="_blank" class="btn">打开【找数字规律】大屏页</a>
     </div>
-    
+
     <div class="mobile-card">
         <h3>数据统计</h3>
         <p>当前签到人数: <strong>{{ count }}</strong></p>
         <div style="display: flex; gap: 10px;">
-             <!-- Future Export Button -->
+            <!-- Future Export Button -->
             <button class="btn" style="background-color: #28a745;" onclick="alert('导出功能开发中')">导出数据</button>
         </div>
     </div>
-    
+
     <div class="mobile-card" style="border: 1px solid red;">
         <h3 style="color: red;">危险操作</h3>
         <p>重置培训将归档当前活动数据，并开启新的签到。</p>

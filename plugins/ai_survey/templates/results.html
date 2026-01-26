@@ -1,0 +1,28 @@
+<div class="results-view" style="max-width: 800px; margin: 0 auto; padding: 40px; color: #fff;">
+    <h2 style="text-align: center; color: #fff; margin-bottom: 10px; font-size: 2.5rem;">{{ results.question }}</h2>
+    <p style="text-align: center; color: #aaa; margin-bottom: 40px; font-size: 1.2rem;">调研结果概览</p>
+
+    <div style="display: flex; flex-direction: column; gap: 24px;">
+        {% for option, count in results.counts.items() %}
+        <div class="result-item">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="font-weight: 600; color: #fff; font-size: 1.5rem;">{{ option }}</span>
+                <span style="color: #4a90e2; font-size: 1.5rem; font-weight: bold;">{{ count }} 票</span>
+            </div>
+            <div style="background: rgba(255,255,255,0.1); height: 16px; border-radius: 8px; overflow: hidden;">
+                {% set percent = (count / results.total * 100) if results.total > 0 else 0 %}
+                <div
+                    style="background: linear-gradient(90deg, #4a90e2, #63b3ed); height: 100%; width: {{ percent }}%; transition: width 1s ease-out;">
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+
+        <div
+            style="margin-top: 50px; padding-top: 30px; border-top: 1px solid rgba(255,255,255,0.2); display: flex; justify-content: center; align-items: center;">
+            <div style="color: #aaa; font-size: 1.5rem;">
+                总参与人数: <strong style="color: #fff; font-size: 2rem; margin-left: 10px;">{{ results.total }}</strong>
+            </div>
+        </div>
+    </div>
+</div>

@@ -75,6 +75,31 @@ async def signin(
                  "error": "主持人密码错误"
              })
     
+    # Check if participant already exists for this event and name (and user role)
+    if role == "user":
+        existing_participant = db.query(Participant).filter(
+            Participant.event_id == event.id,
+            Participant.name == name,
+            Participant.role == "user"
+        ).first()
+
+        if existing_participant:
+            # Re-login: Update session token to new session
+            # This prevents duplicate counting
+            session_token = str(uuid.uuid4())
+            existing_participant.session_token = session_token
+            # Update department if changed (optional)
+            if department:
+                existing_participant.department = department
+            
+            db.commit()
+            
+            # Use redirect logic
+            redirect_url = "/mobile/home"
+            response = RedirectResponse(url=redirect_url, status_code=302)
+            response.set_cookie(key="session_token", value=session_token, httponly=True)
+            return response
+    
     # Create Participant
     session_token = str(uuid.uuid4())
     code4 = f"{random.randint(1000, 9999)}"
@@ -135,7 +160,7 @@ async def mobile_host(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse("mobile_host.html", {
         "request": request, 
         "participant": participant,
-        "plugins": plugin_manager.plugins  # Pass dict, not values()
+        "plugins": plugin_manager.get_all_plugins(db)  # Pass dict, not values()
     })
 
 @router.get("/mobile/plugin/{plugin_id}")
@@ -154,11 +179,44 @@ async def mobile_plugin(plugin_id: str, request: Request, db: Session = Depends(
     if not plugin_templates:
         raise HTTPException(status_code=404, detail="Plugin not found")
          
+    plugin = plugin_manager.get_plugin(plugin_id)
+    if not plugin:
+         raise HTTPException(status_code=404, detail="Plugin not found")
+
+    # Prepare template context with correct config structure
+    context = {
+        "request": request,
+        "config": plugin.meta.get("config", {}),
+        "plugin_name": plugin.meta.get("name", ""),
+        "plugin_meta": plugin.meta
+    }
+
     # Return appropriate template based on role
     if participant.role == "host":
-        return plugin_templates.TemplateResponse("host.html", {"request": request})
+        return plugin_templates.TemplateResponse("host.html", context)
     else:
-        return plugin_templates.TemplateResponse("user.html", {"request": request})
+        return plugin_templates.TemplateResponse("user.html", context)
+
+@router.post("/api/host/show_stats")
+async def host_show_stats(request: Request, db: Session = Depends(get_db)):
+    # Verify host session (simplified)
+    session_token = request.cookies.get("session_token")
+    participant = db.query(Participant).filter(Participant.session_token == session_token).first()
+    if not participant or participant.role not in ["host", "admin"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    event = db.query(Event).filter(Event.is_active == True).first()
+    if event:
+        # Notify display to switch to stats
+        await manager.broadcast({
+            "type": "show_stats"
+        })
+        
+        # Update event state (optional)
+        event.current_plugin_state = "stats"
+        db.commit()
+    
+    return {"status": "ok"}
 
 @router.get("/user/{plugin_id}")
 async def user_plugin(plugin_id: str, request: Request, db: Session = Depends(get_db)):
@@ -199,8 +257,7 @@ async def get_missing_numbers(plugin_id: str, phase: int = 1, db: Session = Depe
     if not event or not event.plugin_data:
         return {"missing_numbers": []}
     
-    import json
-    plugin_data = json.loads(event.plugin_data)
+    plugin_data = event.plugin_data or {}
     phase_key = f"phase{phase}_missing"
     return {"missing_numbers": plugin_data.get(phase_key, [])}
 
@@ -226,8 +283,27 @@ async def submit_plugin_answer(plugin_id: str, data: dict, request: Request, db:
     if not plugin:
         raise HTTPException(status_code=404, detail="Plugin not found")
         
-    await plugin.handle_input(event.id, participant.id, data)
+
+    # Process input via plugin logic
+    try:
+        await plugin.handle_input(event.id, participant.id, data)
+        # Increment interaction count
+        participant.interaction_count = (participant.interaction_count or 0) + 1
+        db.commit()
+    except Exception as e:
+        print(f"Plugin input error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+        
     return {"status": "ok"}
+
+@router.get("/api/stats/count")
+async def get_stats_count(db: Session = Depends(get_db)):
+    """获取签到人数 - 用于前端轮询"""
+    event = db.query(Event).filter(Event.is_active == True).first()
+    if not event:
+        return {"count": 0}
+    count = db.query(Participant).filter(Participant.event_id == event.id).count()
+    return {"count": count}
 
 @router.post("/api/plugin/{plugin_id}/start")
 async def start_plugin(plugin_id: str, request: Request, db: Session = Depends(get_db)):
@@ -452,4 +528,9 @@ async def host_plugin(plugin_id: str, request: Request, db: Session = Depends(ge
     plugin_templates = plugin_manager.get_templates(plugin_id)
     if not plugin_templates:
         raise HTTPException(status_code=404, detail="Plugin not found")
-    return plugin_templates.TemplateResponse("host.html", {"request": request})
+        
+    plugin = plugin_manager.get_plugin(plugin_id)
+    if not plugin:
+        raise HTTPException(status_code=404, detail="Plugin not found")
+        
+    return plugin_templates.TemplateResponse("host.html", {"request": request, "config": plugin.meta})

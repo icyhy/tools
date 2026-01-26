@@ -31,7 +31,15 @@
     </div>
 
     <!-- 动态内容容器 - 互动内容在这里动态加载 -->
+    <!-- 动态内容容器 - 互动内容在这里动态加载 -->
     <div id="dynamic-content-container"></div>
+
+    <!-- 悬浮二维码容器 (互动页面右上角) -->
+    <div id="persistent-qr-container"
+        style="display: none; position: absolute; top: 20px; right: 20px; background: rgba(255,255,255,0.9); padding: 10px; border-radius: 8px; z-index: 1000; text-align: center;">
+        <img src="{{ qr_code }}" style="width: 120px; height: 120px; display: block;" alt="Sign In">
+        <div style="font-size: 14px; color: #333; margin-top: 5px;">扫码签到/互动</div>
+    </div>
 </div>
 
 <div id="countdown-overlay" class="countdown-overlay" style="display: none;">
@@ -159,6 +167,10 @@
                     homePage.style.display = 'none';
                 }
 
+                // Show Persistent QR
+                const qrContainer = document.getElementById('persistent-qr-container');
+                if (qrContainer) qrContainer.style.display = 'block';
+
                 // Load plugin content
                 const container = document.getElementById('dynamic-content-container');
                 container.innerHTML = html;
@@ -183,6 +195,11 @@
                     homePage.style.display = 'none';
                 }
 
+                // Show Persistent QR (results page also needs it usually, or maybe not? user said "interactive startup")
+                // Let's keep it for results too so they can sign in late
+                const qrContainer = document.getElementById('persistent-qr-container');
+                if (qrContainer) qrContainer.style.display = 'block';
+
                 // Load results content  
                 const container = document.getElementById('dynamic-content-container');
                 container.innerHTML = html;
@@ -198,6 +215,20 @@
         // Clear plugin content
         const container = document.getElementById('dynamic-content-container');
         container.innerHTML = '';
+
+        // Hide Persistent QR
+        const qrContainer = document.getElementById('persistent-qr-container');
+        if (qrContainer) qrContainer.style.display = 'none';
+
+        // Check if home page content is stale (e.g. shows "Training not started" instead of Sign In info)
+        // If event is running, we expect 'home-qr-container' to be present in the home page div.
+        // If it's missing, it means the page was loaded when event was not running.
+        const homeQr = document.querySelector('.home-qr-container');
+        if (!homeQr) {
+            console.log("Home content stale, reloading...");
+            location.reload();
+            return;
+        }
 
         // Show home page
         const homePage = document.getElementById('display-page-home');

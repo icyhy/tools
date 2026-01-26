@@ -18,6 +18,8 @@ class Event(Base):
     plugins_config = Column(JSON, default={}) # Event-specific config for plugins
     current_plugin_id = Column(String, nullable=True) # Currently active plugin ID for display
     current_plugin_state = Column(String, default="idle") # idle, running, results
+    plugin_data = Column(JSON, nullable=True) # Data for general plugins to store state
+    custom_plugins = Column(JSON, nullable=True) # Store custom survey/vote configurations
 
 class Participant(Base):
     __tablename__ = "participants"
@@ -28,6 +30,7 @@ class Participant(Base):
     name = Column(String, nullable=True)
     department = Column(String, nullable=True)
     role = Column(String, default="user") # 'user', 'host', 'admin'
+    interaction_count = Column(Integer, default=0) # Number of interactions participated in
     code4 = Column(String, nullable=True) # Random 4-digit code
     created_at = Column(DateTime, default=datetime.utcnow)
     

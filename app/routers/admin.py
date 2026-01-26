@@ -45,7 +45,7 @@ async def admin_page(request: Request, db: Session = Depends(get_db)):
     count = db.query(Participant).filter(Participant.event_id == event.id).count()
     
     from app.plugin_manager import plugin_manager
-    all_plugins = plugin_manager.plugins
+    all_plugins = plugin_manager.get_all_plugins(db)
     
     return templates.TemplateResponse("admin.html", {
         "request": request, 
@@ -77,7 +77,68 @@ async def admin_update(
         event.status = status
         event.enabled_plugins = enabled_plugins
         db.commit()
-    return RedirectResponse(url="/admin", status_code=302)
+    return {"status": "ok"}
+
+@router.get("/api/admin/interactions")
+async def list_interactions(db: Session = Depends(get_db)):
+    event = db.query(Event).filter(Event.is_active == True).first()
+    if not event:
+        return []
+    
+    interactions = []
+    if event.custom_plugins:
+        for pid, config in event.custom_plugins.items():
+            interactions.append({
+                "id": pid,
+                "type": config.get("type"),
+                "name": config.get("name"),
+                "question": config.get("question")
+            })
+    return interactions
+
+@router.post("/api/admin/interactions")
+async def create_interaction(data: dict, db: Session = Depends(get_db)):
+    event = db.query(Event).filter(Event.is_active == True).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="No active event")
+        
+    p_type = data.get("type")
+    if p_type not in ["survey", "vote"]:
+        raise HTTPException(status_code=400, detail="Invalid interaction type")
+        
+    # Generate ID
+    import uuid
+    plugin_id = f"custom_{p_type}_{uuid.uuid4().hex[:8]}"
+    
+    new_config = {
+        "type": p_type,
+        "name": data.get("name"),
+        "question": data.get("question"),
+        "options": data.get("options", [])
+    }
+    
+    current_plugins = dict(event.custom_plugins) if event.custom_plugins else {}
+    current_plugins[plugin_id] = new_config
+    
+    event.custom_plugins = current_plugins
+    db.commit()
+    
+    return {"status": "ok", "id": plugin_id}
+
+@router.delete("/api/admin/interactions/{plugin_id}")
+async def delete_interaction(plugin_id: str, db: Session = Depends(get_db)):
+    event = db.query(Event).filter(Event.is_active == True).first()
+    if not event or not event.custom_plugins:
+        raise HTTPException(status_code=404, detail="Interaction not found")
+        
+    current_plugins = dict(event.custom_plugins)
+    if plugin_id in current_plugins:
+        del current_plugins[plugin_id]
+        event.custom_plugins = current_plugins
+        db.commit()
+        return {"status": "ok"}
+        
+    raise HTTPException(status_code=404, detail="Interaction not found")
 
 # New Endpoint for Config
 @router.post("/api/admin/plugin_config")

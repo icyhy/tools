@@ -1,0 +1,100 @@
+<div class="ai-survey-screen" style="text-align: center; padding: 40px; color: #fff; min-height: 80vh;">
+    <h1 style="font-size: 3rem; margin-bottom: 10px;">{{ plugin_name }}</h1>
+    <h2 id="survey-question" style="font-size: 2rem; color: #ddd; margin-bottom: 50px;">
+        {{ config.question }}
+    </h2>
+
+    <div id="survey-results"
+        style="display: flex; justify-content: center; align-items: flex-end; gap: 30px; height: 400px; margin-top: 50px;">
+        <!-- Bars will be rendered here -->
+    </div>
+
+    <div id="survey-options-labels"
+        style="display: flex; justify-content: center; gap: 30px; margin-top: 20px; flex-wrap: wrap;">
+        <!-- Labels will be rendered here -->
+    </div>
+
+    <div style="margin-top: 50px; font-size: 1.5rem; color: #aaa;">
+        参与人数: <span id="total-count" style="color: #4a90e2; font-weight: bold;">0</span>
+    </div>
+</div>
+
+<script>
+    (function () {
+        const pluginId = 'ai_survey';
+        const options = {{ config.options | default ([]) | tojson | safe
+    }};
+
+    function renderSkeleton() {
+        const resultsContainer = document.getElementById('survey-results');
+        const labelsContainer = document.getElementById('survey-options-labels');
+
+        if (!resultsContainer) return; // labelsContainer is not used in new layout, so we can ignore if missing
+
+        resultsContainer.innerHTML = '';
+        if (labelsContainer) labelsContainer.innerHTML = ''; // Clear old labels if container exists
+
+        // Adjust container style for vertical list
+        resultsContainer.style.flexDirection = 'column';
+        resultsContainer.style.height = 'auto'; // Auto height
+        resultsContainer.style.alignItems = 'stretch';
+        resultsContainer.style.gap = '20px';
+        resultsContainer.style.minWidth = '50%'; // Take up reasonable width
+
+        options.forEach(opt => {
+            const optionItem = document.createElement('div');
+            optionItem.className = 'survey-option-item';
+            optionItem.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+            optionItem.style.padding = '20px';
+            optionItem.style.borderRadius = '10px';
+            optionItem.style.fontSize = '1.8rem';
+            optionItem.style.color = '#fff';
+            optionItem.style.textAlign = 'center';
+            optionItem.style.border = '1px solid rgba(255, 255, 255, 0.2)';
+            optionItem.innerText = opt;
+
+            resultsContainer.appendChild(optionItem);
+        });
+    }
+
+    function updateResults(results) {
+        const total = results.total || 0;
+        const totalCountEl = document.getElementById('total-count');
+        if (totalCountEl) totalCountEl.innerText = total;
+
+        // In this simplified view, we do NOT show individual bars/counts.
+        // Just the options and the total count.
+    }
+
+    // Connect to WebSocket for real-time updates
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${protocol}//${window.location.host}/ws/display`);
+
+    ws.onmessage = function (event) {
+        const data = JSON.parse(event.data);
+        if (data.type === 'plugin_update' && data.plugin_id === pluginId) {
+            if (data.data) {
+                updateResults(data.data);
+            }
+        }
+    };
+
+    // Initialize skeleton first to show options immediately
+    renderSkeleton();
+
+    // Fetch initial results
+    async function loadInitialResults() {
+        try {
+            const response = await fetch(`/api/plugin/${pluginId}/results`);
+            if (response.ok) {
+                const results = await response.json();
+                updateResults(results);
+            }
+        } catch (e) {
+            console.error('Failed to load initial results:', e);
+        }
+    }
+
+    loadInitialResults();
+}) ();
+</script>

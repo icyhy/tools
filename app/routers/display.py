@@ -49,10 +49,36 @@ async def display_index(request: Request, db: Session = Depends(get_db)):
 @router.get("/display/{plugin_id}")
 async def display_plugin(plugin_id: str, request: Request):
     """Load plugin display content"""
+    plugin = plugin_manager.get_plugin(plugin_id)
+    if not plugin:
+        raise HTTPException(status_code=404, detail="Plugin not found")
+        
     plugin_templates = plugin_manager.get_templates(plugin_id)
     if not plugin_templates:
-        raise HTTPException(status_code=404, detail="Plugin not found")
-    return plugin_templates.TemplateResponse("display.html", {"request": request})
+        raise HTTPException(status_code=404, detail="Plugin templates not found")
+        
+    # Prepare template context with correct config structure
+    # Merge event-specific config if available
+    config = plugin.meta.get("config", {}).copy()
+    
+    # Try to find active event and its config for this plugin
+    # Note: In a real app we might pass event_id in URL or infer from session/host
+    try:
+        event = db.query(Event).filter(Event.is_active == True).first()
+        if event and event.plugins_config and plugin_id in event.plugins_config:
+            # Update with event specific config
+            config.update(event.plugins_config.get(plugin_id, {}))
+    except Exception as e:
+        # Fallback to default config if db error
+        pass
+
+    context = {
+        "request": request,
+        "config": config,
+        "plugin_name": plugin.meta.get("name", ""),
+        "plugin_meta": plugin.meta
+    }
+    return plugin_templates.TemplateResponse("display.html", context)
 
 @router.get("/display/results/{plugin_id}")
 async def display_results(plugin_id: str, request: Request, db: Session = Depends(get_db)):
@@ -72,4 +98,28 @@ async def display_results(plugin_id: str, request: Request, db: Session = Depend
     if not plugin_templates:
         raise HTTPException(status_code=404, detail="Plugin templates not found")
         
-    return plugin_templates.TemplateResponse("results.html", {"request": request, "results": results})
+    context = {
+        "request": request,
+        "results": results,
+        "config": plugin.meta.get("config", {}),
+        "plugin_name": plugin.meta.get("name", ""),
+        "plugin_meta": plugin.meta
+    }
+    return plugin_templates.TemplateResponse("results.html", context)
+
+@router.get("/display/stats")
+async def display_stats(request: Request, db: Session = Depends(get_db)):
+    """Show user interaction statistics"""
+    event = db.query(Event).filter(Event.is_active == True).first()
+    
+    # Get top 3 participants by interaction count
+    top_participants = db.query(Participant)\
+        .filter(Participant.event_id == (event.id if event else None))\
+        .order_by(Participant.interaction_count.desc())\
+        .limit(3)\
+        .all()
+        
+    return templates.TemplateResponse("stats.html", {
+        "request": request,
+        "top_participants": top_participants
+    })

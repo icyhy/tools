@@ -1,13 +1,14 @@
-<div class="vote-plugin-user" style="max-width: 600px; margin: 0 auto; padding: 20px;">
+<div class="ai-survey-user" style="max-width: 600px; margin: 0 auto; padding: 20px;">
     <h3 style="text-align: center; color: #444; margin-bottom: 30px; font-size: 1.5rem;">{{ config.question }}</h3>
-    <div id="vote-options" style="display: flex; flex-direction: column; gap: 12px;">
+    <div id="survey-options" style="display: flex; flex-direction: column; gap: 12px;">
         {% for option in config.options %}
-        <button class="btn vote-option" data-value="{{ option }}" style="padding: 15px; font-size: 1.1rem; border-radius: 8px; 
-                       background-color: #fff; color: #333; border: 1px solid #ddd; 
-                       cursor: pointer; transition: all 0.2s;"
-            onmouseover="this.style.backgroundColor='#f8f9fa'; this.style.borderColor='#4a90e2'"
-            onmouseout="if(!this.classList.contains('selected')) { this.style.backgroundColor='#fff'; this.style.borderColor='#ddd' }"
-            onclick="submitVote('{{ option }}', this)">
+        <button class="btn survey-option" data-value="{{ option }}" style="padding: 15px; font-size: 1.1rem; border-radius: 12px; 
+                       background-color: #fff; color: #333; border: 2px solid #eee; 
+                       box-shadow: 0 2px 4px rgba(0,0,0,0.05); cursor: pointer; 
+                       transition: all 0.2s;"
+            onmouseover="this.style.borderColor='#4a90e2'; this.style.backgroundColor='#f8f9fa'"
+            onmouseout="if(!this.classList.contains('selected')) { this.style.borderColor='#eee'; this.style.backgroundColor='#fff' }"
+            onclick="submitResponse('{{ option }}', this)">
             {{ option }}
         </button>
         {% endfor %}
@@ -16,9 +17,9 @@
 </div>
 
 <script>
-    async function submitVote(value, btnElement) {
+    async function submitResponse(value, btnElement) {
         try {
-            const response = await fetch('/api/plugin/demo_vote/submit', {
+            const response = await fetch('/api/plugin/ai_survey/submit', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -28,19 +29,19 @@
 
             if (response.ok) {
                 // Visual feedback
-                const btns = document.querySelectorAll('.vote-option');
+                const btns = document.querySelectorAll('.survey-option');
                 btns.forEach(b => {
                     b.classList.remove('selected');
-                    b.disabled = true;
-                    b.style.opacity = 0.5;
+                    b.style.borderColor = "#eee";
+                    b.style.backgroundColor = "#fff";
+                    b.style.color = "#333";
                 });
                 btnElement.classList.add('selected');
-                btnElement.style.backgroundColor = "#28a745";
+                btnElement.style.backgroundColor = "#4a90e2";
                 btnElement.style.color = "#fff";
-                btnElement.style.borderColor = "#28a745";
-                btnElement.style.opacity = 1;
+                btnElement.style.borderColor = "#4a90e2";
 
-                document.getElementById('status-message').innerText = "✓ 投票成功!";
+                document.getElementById('status-message').innerText = "✓ 已提交: " + value;
                 document.getElementById('status-message').style.color = "#28a745";
             } else {
                 document.getElementById('status-message').innerText = "✗ 提交失败,请重试";

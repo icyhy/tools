@@ -22,11 +22,11 @@ class Plugin(BasePlugin):
         try:
             event = db.query(Event).filter(Event.id == event_id).first()
             if event:
-                event.plugin_data = json.dumps({
+                event.plugin_data = {
                     "phase1_missing": phase1_missing,
                     "phase2_missing": phase2_missing,
                     "phase3_missing": phase3_missing
-                })
+                }
                 db.commit()
         finally:
             db.close()
@@ -49,7 +49,7 @@ class Plugin(BasePlugin):
             if not event or not event.plugin_data:
                 return
             
-            plugin_data = json.loads(event.plugin_data)
+            plugin_data = event.plugin_data or {}
             
             # Get the phase and submitted numbers
             phase = data.get("phase", 1)
@@ -73,10 +73,10 @@ class Plugin(BasePlugin):
             
             if existing:
                 # Update existing submission
-                submission_data = json.loads(existing.data) if isinstance(existing.data, str) else existing.data
+                submission_data = existing.data or {}
                 submission_data[f"phase{phase}_submitted"] = submitted
                 submission_data[f"phase{phase}_score"] = score
-                existing.data = json.dumps(submission_data)
+                existing.data = submission_data
                 db.commit()
             else:
                 # Create new submission
@@ -84,10 +84,10 @@ class Plugin(BasePlugin):
                     event_id=event_id,
                     plugin_id=self.plugin_id,
                     user_id=user_id,
-                    data=json.dumps({
+                    data={
                         f"phase{phase}_submitted": submitted,
                         f"phase{phase}_score": score
-                    })
+                    }
                 )
                 db.add(submission)
                 db.commit()
@@ -106,8 +106,7 @@ class Plugin(BasePlugin):
                 "phase3_missing": []
             }
             if event and event.plugin_data:
-                plugin_data = json.loads(event.plugin_data)
-                phase_data = plugin_data
+                phase_data = event.plugin_data
             
             # Get all submissions
             submissions = db.query(PluginSubmission).filter(
@@ -130,7 +129,7 @@ class Plugin(BasePlugin):
             phase3_scores = []
             
             for sub in submissions:
-                submission_data = json.loads(sub.data) if isinstance(sub.data, str) else sub.data
+                submission_data = sub.data or {}
                 
                 if "phase1_score" in submission_data:
                     phase1_scores.append(submission_data["phase1_score"])

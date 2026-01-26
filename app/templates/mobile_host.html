@@ -178,7 +178,27 @@
                 alert('请求出错');
             }
         }
+
+        async function showStats() {
+            if (!confirm("确定要在大屏上显示互动统计排行榜吗？")) return;
+            try {
+                const response = await fetch('/api/host/show_stats', { method: 'POST' });
+                if (response.ok) {
+                    alert('已显示统计榜单');
+                } else {
+                    alert('操作失败');
+                }
+            } catch (e) {
+                console.error(e);
+                alert('请求出错');
+            }
+        }
     </script>
+
+    <div class="mobile-card">
+        <h4>其他功能</h4>
+        <button type="button" class="btn" style="background-color: #17a2b8;" onclick="showStats()">显示互动统计排行榜</button>
+    </div>
 
     <div class="mobile-card">
         <h4>当前状态</h4>

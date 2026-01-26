@@ -1,43 +1,77 @@
-<div class="vote-plugin-screen" style="text-align: center; padding: 50px;">
-    <h1>现场投票</h1>
-    <h2 id="vote-question"></h2>
-    <div id="vote-options" style="display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; margin-top: 50px;">
-        <!-- Options rendered via JS -->
+<div class="vote-plugin-screen" style="text-align: center; padding: 50px; color: #fff; min-height: 80vh;">
+    <h1 style="font-size: 3rem; margin-bottom: 20px;">{{ plugin_name }}</h1>
+    <h2 id="vote-question" style="font-size: 2rem; margin-bottom: 50px;">{{ config.question }}</h2>
+    <div id="vote-options"
+        style="display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; margin-top: 50px;">
+        <!-- Options rendered via JS with real-time counts -->
+    </div>
+    <div style="margin-top: 50px; font-size: 1.5rem; color: #aaa;">
+        总投票数: <span id="total-votes" style="color: #4a90e2; font-weight: bold;">0</span>
     </div>
 </div>
 
 <script>
-    // Fetch config to render
-    // Note: In real app, we might pass config via template context or API
-    // For MVP, let's fetch a lightweight config endpoint or assume embedded
-    // Actually, we can fetch from a new endpoint /api/plugin/{plugin_id}/config
-    // OR we just embed it if the server passed it.
-    // The server passed TemplateResponse. We can inject config there.
-    
-    // Let's implement a simple fetch for config or hardcode for MVP if needed.
-    // Better: Add /api/plugin/{plugin_id}/config endpoint.
-    
-    async function loadConfig() {
+    const pluginId = 'demo_vote';
+    const options = {{ config.options | default ([]) | tojson }};
+
+    function renderOptions() {
+        const container = document.getElementById('vote-options');
+        container.innerHTML = '';
+
+        options.forEach(opt => {
+            const div = document.createElement('div');
+            div.style.border = "2px solid #fff";
+            div.style.padding = "20px 40px";
+            div.style.borderRadius = "10px";
+            div.style.minWidth = "150px";
+            div.style.backgroundColor = "rgba(255,255,255,0.1)";
+            div.innerHTML = `
+                <div style="font-size: 1.5rem; margin-bottom: 10px;">${opt}</div>
+                <div class="vote-count" data-option="${opt}" style="font-size: 2.5rem; font-weight: bold; color: #4a90e2;">0</div>
+            `;
+            container.appendChild(div);
+        });
+    }
+
+    function updateResults(results) {
+        const total = results.total || 0;
+        document.getElementById('total-votes').innerText = total;
+
+        options.forEach(opt => {
+            const count = results.counts[opt] || 0;
+            const countEl = document.querySelector(`.vote-count[data-option="${opt}"]`);
+            if (countEl) countEl.innerText = count;
+        });
+    }
+
+    // Connect to WebSocket for real-time updates
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${protocol}//${window.location.host}/ws/display`);
+
+    ws.onmessage = function (event) {
+        const data = JSON.parse(event.data);
+        if (data.type === 'plugin_update' && data.plugin_id === pluginId) {
+            if (data.results) {
+                updateResults(data.results);
+            }
+        }
+    };
+
+    // Initialize
+    renderOptions();
+
+    // Fetch initial results
+    async function loadInitialResults() {
         try {
-            const response = await fetch('/api/plugin/demo_vote/config');
-            const config = await response.json();
-            
-            document.getElementById('vote-question').innerText = config.question;
-            const container = document.getElementById('vote-options');
-            
-            config.options.forEach(opt => {
-                const div = document.createElement('div');
-                div.style.border = "2px solid #fff";
-                div.style.padding = "20px";
-                div.style.borderRadius = "10px";
-                div.style.fontSize = "2rem";
-                div.innerText = opt;
-                container.appendChild(div);
-            });
+            const response = await fetch(`/api/plugin/${pluginId}/results`);
+            if (response.ok) {
+                const results = await response.json();
+                updateResults(results);
+            }
         } catch (e) {
-            console.error(e);
+            console.error('Failed to load initial results:', e);
         }
     }
-    
-    loadConfig();
+
+    loadInitialResults();
 </script>

@@ -1,0 +1,15 @@
+{
+    "name": "AI工具问卷",
+    "description": "收集参与者对常用AI工具的使用偏好",
+    "config": {
+        "question": "您最常用的AI工具是？",
+        "options": [
+            "Gemini",
+            "Doubao",
+            "ChatGPT",
+            "Claude",
+            "Kimi",
+            "DeepSeek"
+        ]
+    }
+}

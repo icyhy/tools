@@ -1,0 +1,27 @@
+<div class="plugin-card"
+    style="background: white; border: 1px solid #e1e4e8; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
+        <div>
+            <h3 style="margin: 0 0 5px 0; font-size: 1.25rem; color: #1f2328;">AI工具问卷</h3>
+            <p style="margin: 0; color: #636c76; font-size: 0.9rem;">收集常用的AI工具使用情况</p>
+        </div>
+        <span class="status-badge"
+            style="background: #eefcf3; color: #1f883d; padding: 4px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: 600;">就绪</span>
+    </div>
+
+    <div style="margin-bottom: 20px; padding: 10px; background: #f6f8fa; border-radius: 8px;">
+        <strong style="display: block; font-size: 0.85rem; color: #636c76; margin-bottom: 5px;">问卷题目:</strong>
+        <span style="color: #1f2328;">{{ config.config.question }}</span>
+    </div>
+
+    <div style="display: flex; gap: 10px;">
+        <button class="btn action-btn" onclick="startPlugin('ai_survey')"
+            style="flex: 1; background-color: #2ea44f; border: 1px solid rgba(31, 35, 40, 0.15); color: white; padding: 10px; border-radius: 6px; font-weight: 600; cursor: pointer;">
+            开始问卷
+        </button>
+        <button class="btn"
+            style="flex: 1; background-color: #f6f8fa; border: 1px solid #d0d7de; color: #24292f; padding: 10px; border-radius: 6px; font-weight: 600; cursor: pointer;">
+            更多配置
+        </button>
+    </div>
+</div>
