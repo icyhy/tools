@@ -31,20 +31,6 @@
             </div>
 
             <div class="form-group">
-                <label>可用互动插件</label>
-                <div style="border: 1px solid #ddd; padding: 10px; border-radius: 4px;">
-                    {% for p_id, plugin in plugins.items() %}
-                    <div style="margin-bottom: 5px;">
-                        <input type="checkbox" id="p_{{ p_id }}" name="enabled_plugins" value="{{ p_id }}" {% if not
-                            event.enabled_plugins or p_id in event.enabled_plugins %}checked{% endif %}>
-                        <label for="p_{{ p_id }}" style="display: inline; font-weight: normal;">{{ plugin.name
-                            }}</label>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
-
-            <div class="form-group">
                 <label>主持人密码</label>
                 <input type="text" name="host_password" value="{{ event.host_password_hash }}" required>
             </div>
@@ -59,9 +45,39 @@
     </div>
 
     <div class="mobile-card">
-        <h3>自定义互动内容</h3>
-        <div id="custom-interactions-list">
-            Loading...
+        <h3>互动内容管理</h3>
+        <div id="interactions-list">
+            {% if interactions %}
+            {% for interaction in interactions %}
+            <div
+                style="border: 1px solid #eee; padding: 10px; margin-bottom: 5px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <strong>{{ interaction.name }}</strong>
+                    <span
+                        style="font-size: 0.8em; color: white; background: #17a2b8; padding: 2px 5px; border-radius: 3px;">{{
+                        interaction.plugin_id }}</span>
+                    <div style="font-size: 0.9em; color: #666;">
+                        {% if interaction.config.question %}
+                        {{ interaction.config.question }}
+                        {% else %}
+                        (默认配置)
+                        {% endif %}
+                    </div>
+                </div>
+                <div>
+                    <label class="switch" style="margin-right: 10px;">
+                        <input type="checkbox" onchange="toggleInteraction({{ interaction.id }}, this.checked)" {% if
+                            interaction.is_enabled %}checked{% endif %}>
+                        <span class="slider round">启用</span>
+                    </label>
+                    <button onclick="deleteInteraction({{ interaction.id }})"
+                        style="color: red; border: none; background: none; cursor: pointer;">删除</button>
+                </div>
+            </div>
+            {% endfor %}
+            {% else %}
+            <p style="color: #999;">暂无互动，请点击下方新建。</p>
+            {% endif %}
         </div>
         <button class="btn" style="background-color: #28a745; margin-top: 10px;" onclick="showAddModal()">+
             新建互动</button>
@@ -71,31 +87,37 @@
     <div id="add-modal"
         style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
         <div
-            style="background: white; width: 90%; max-width: 500px; margin: 50px auto; padding: 20px; border-radius: 8px;">
+            style="background: white; width: 90%; max-width: 500px; margin: 50px auto; padding: 20px; border-radius: 8px; max-height: 80vh; overflow-y: auto;">
             <h3>新建互动</h3>
             <form onsubmit="createInteraction(event)">
                 <div class="form-group">
-                    <label>类型</label>
-                    <select id="new-type" style="width: 100%; padding: 8px;">
-                        <option value="survey">AI 工具问卷 (Survey)</option>
-                        <option value="vote">投票 (Vote)</option>
+                    <label>选择插件类型</label>
+                    <select id="new-plugin-id" style="width: 100%; padding: 8px;" onchange="updateConfigForm()">
+                        {% for p_id, plugin in plugins.items() %}
+                        <option value="{{ p_id }}">{{ plugin.name }}</option>
+                        {% endfor %}
                     </select>
                 </div>
                 <div class="form-group">
                     <label>互动名称</label>
-                    <input type="text" id="new-name" placeholder="例如: 最佳员工投票" required
-                        style="width: 100%; padding: 8px;">
+                    <input type="text" id="new-name" placeholder="例如: 晨会问卷" required style="width: 100%; padding: 8px;">
                 </div>
-                <div class="form-group">
-                    <label>问题内容</label>
-                    <input type="text" id="new-question" placeholder="例如: 谁是年度最佳员工?" required
-                        style="width: 100%; padding: 8px;">
+
+                <!-- Dynamic Config Fields -->
+                <div id="config-fields">
+                    <!-- Default fields for Survey/Vote -->
+                    <div class="form-group simple-config">
+                        <label>问题内容</label>
+                        <input type="text" id="new-question" placeholder="例如: 谁是年度最佳员工?"
+                            style="width: 100%; padding: 8px;">
+                    </div>
+                    <div class="form-group simple-config">
+                        <label>选项 (每行一个)</label>
+                        <textarea id="new-options" rows="5" placeholder="张三&#10;李四&#10;王五"
+                            style="width: 100%; padding: 8px;"></textarea>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>选项 (每行一个)</label>
-                    <textarea id="new-options" rows="5" placeholder="张三&#10;李四&#10;王五" required
-                        style="width: 100%; padding: 8px;"></textarea>
-                </div>
+
                 <div style="text-align: right; margin-top: 15px;">
                     <button type="button" class="btn" style="background-color: #6c757d; width: auto;"
                         onclick="closeAddModal()">取消</button>
@@ -106,64 +128,52 @@
     </div>
 
     <script>
-        async function loadInteractions() {
-            try {
-                const res = await fetch('/api/admin/interactions');
-                const list = await res.json();
-                const container = document.getElementById('custom-interactions-list');
-
-                if (list.length === 0) {
-                    container.innerHTML = '<p style="color: #999;">暂无自定义互动</p>';
-                    return;
-                }
-
-                container.innerHTML = list.map(item => `
-                    <div style="border: 1px solid #eee; padding: 10px; margin-bottom: 5px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <strong>${item.name}</strong> 
-                            <span style="font-size: 0.8em; color: white; background: ${item.type === 'vote' ? '#17a2b8' : '#6610f2'}; padding: 2px 5px; border-radius: 3px;">${item.type}</span>
-                            <div style="font-size: 0.9em; color: #666;">${item.question}</div>
-                        </div>
-                        <button onclick="deleteInteraction('${item.id}')" style="color: red; border: none; background: none; cursor: pointer;">删除</button>
-                    </div>
-                `).join('');
-            } catch (e) {
-                console.error(e);
-            }
-        }
-
         function showAddModal() {
             document.getElementById('add-modal').style.display = 'block';
+            updateConfigForm();
         }
 
         function closeAddModal() {
             document.getElementById('add-modal').style.display = 'none';
         }
 
+        function updateConfigForm() {
+            const pluginId = document.getElementById('new-plugin-id').value;
+            const configDiv = document.getElementById('config-fields');
+            const simpleConfigs = document.querySelectorAll('.simple-config');
+
+            // Simple logic: if plugin is demo_vote or ai_survey, show question/options inputs
+            // Otherwise hide them (or show generic JSON config in future)
+            if (pluginId === 'demo_vote' || pluginId === 'ai_survey') {
+                simpleConfigs.forEach(el => el.style.display = 'block');
+            } else {
+                simpleConfigs.forEach(el => el.style.display = 'none');
+            }
+        }
+
         async function createInteraction(e) {
             e.preventDefault();
-            const type = document.getElementById('new-type').value;
+            const pluginId = document.getElementById('new-plugin-id').value;
             const name = document.getElementById('new-name').value;
-            const question = document.getElementById('new-question').value;
-            const optionsText = document.getElementById('new-options').value;
-            const options = optionsText.split('\n').map(o => o.trim()).filter(o => o);
+
+            let config = {};
+            if (pluginId === 'demo_vote' || pluginId === 'ai_survey') {
+                const question = document.getElementById('new-question').value;
+                const optionsText = document.getElementById('new-options').value;
+                const options = optionsText.split('\n').map(o => o.trim()).filter(o => o);
+                config = { question, options };
+            }
 
             try {
                 const res = await fetch('/api/admin/interactions', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ type, name, question, options })
+                    body: JSON.stringify({ plugin_id: pluginId, name, config })
                 });
 
                 if (res.ok) {
                     closeAddModal();
-                    loadInteractions();
-                    // Clear form
-                    document.getElementById('new-name').value = '';
-                    document.getElementById('new-question').value = '';
-                    document.getElementById('new-options').value = '';
-                    alert('创建成功，请在"可用互动插件"中勾选启用该互动。');
-                    location.reload(); // Reload to update checkbox list
+                    location.reload();
                 } else {
                     alert('创建失败');
                 }
@@ -176,47 +186,24 @@
         async function deleteInteraction(id) {
             if (!confirm('确定要删除这个互动吗?')) return;
             await fetch(`/api/admin/interactions/${id}`, { method: 'DELETE' });
-            loadInteractions();
             location.reload();
         }
 
-        // Initial load
-        loadInteractions();
+        async function toggleInteraction(id, enabled) {
+            await fetch(`/api/admin/interactions/${id}/toggle?enable=${enabled}`, { method: 'POST' });
+            // console.log("Toggled", id, enabled);
+        }
     </script>
 
     <div class="mobile-card">
-        <h3>插件内容配置 (高级)</h3>
-        {% for p_id, plugin in plugins.items() %}
-        <div style="margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 10px;">
-            <h4>{{ plugin.name }} ({{ p_id }})</h4>
-            <form action="/api/admin/plugin_config" method="post">
-                <input type="hidden" name="plugin_id" value="{{ p_id }}">
-                <div class="form-group">
-                    <label>JSON 配置</label>
-                    <textarea name="config_json" rows="5" style="width: 100%; padding: 10px; font-family: monospace;">
-                        {%- if event.plugins_config and event.plugins_config.get(p_id) -%}
-                            {{ event.plugins_config.get(p_id) | tojson(indent=2) }}
-                        {%- else -%}
-                            {{ plugin.meta.get('config', {}) | tojson(indent=2) }}
-                        {%- endif -%}
-                    </textarea>
-                </div>
-                <button type="submit" class="btn" style="background-color: #17a2b8;">更新配置</button>
-            </form>
-        </div>
-        {% endfor %}
-    </div>
-
-    <div class="mobile-card">
         <h3>互动入口 (大屏)</h3>
-        <a href="/display/find_numbers" target="_blank" class="btn">打开【找数字规律】大屏页</a>
+        <a href="/" target="_blank" class="btn">打开大屏主页</a>
     </div>
 
     <div class="mobile-card">
         <h3>数据统计</h3>
         <p>当前签到人数: <strong>{{ count }}</strong></p>
         <div style="display: flex; gap: 10px;">
-            <!-- Future Export Button -->
             <button class="btn" style="background-color: #28a745;" onclick="alert('导出功能开发中')">导出数据</button>
         </div>
     </div>

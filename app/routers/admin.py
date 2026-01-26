@@ -3,7 +3,7 @@ from fastapi.responses import RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import Event, Participant, Plugin
+from app.models import Event, Participant, Plugin, Interaction
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -45,13 +45,18 @@ async def admin_page(request: Request, db: Session = Depends(get_db)):
     count = db.query(Participant).filter(Participant.event_id == event.id).count()
     
     from app.plugin_manager import plugin_manager
-    all_plugins = plugin_manager.get_all_plugins(db)
+    # get_all_plugins now returns dict of static plugins
+    all_plugins = plugin_manager.get_all_plugins()
+    
+    # Fetch configured interactions
+    interactions = db.query(Interaction).filter(Interaction.event_id == event.id).all()
     
     return templates.TemplateResponse("admin.html", {
         "request": request, 
         "event": event,
         "count": count,
-        "plugins": all_plugins
+        "plugins": all_plugins,
+        "interactions": interactions
     })
 
 @router.post("/api/admin/update")
@@ -62,11 +67,10 @@ async def admin_update(
     host_password: str = Form(...),
     admin_password: str = Form(...),
     status: str = Form(...), # pending, running, ended
-    enabled_plugins: list = Form([]), # List of checked plugins
     db: Session = Depends(get_db)
 ):
     if request.cookies.get("admin_session") != "authenticated":
-         raise HTTPException(status_code=401, detail="Unauthorized")
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
     event = db.query(Event).filter(Event.is_active == True).first()
     if event:
@@ -75,7 +79,6 @@ async def admin_update(
         event.host_password_hash = host_password 
         event.admin_password_hash = admin_password
         event.status = status
-        event.enabled_plugins = enabled_plugins
         db.commit()
     return {"status": "ok"}
 
@@ -85,16 +88,14 @@ async def list_interactions(db: Session = Depends(get_db)):
     if not event:
         return []
     
-    interactions = []
-    if event.custom_plugins:
-        for pid, config in event.custom_plugins.items():
-            interactions.append({
-                "id": pid,
-                "type": config.get("type"),
-                "name": config.get("name"),
-                "question": config.get("question")
-            })
-    return interactions
+    interactions = db.query(Interaction).filter(Interaction.event_id == event.id).all()
+    return [{
+        "id": i.id,
+        "plugin_id": i.plugin_id,
+        "name": i.name,
+        "config": i.config,
+        "is_enabled": i.is_enabled
+    } for i in interactions]
 
 @router.post("/api/admin/interactions")
 async def create_interaction(data: dict, db: Session = Depends(get_db)):
@@ -102,43 +103,47 @@ async def create_interaction(data: dict, db: Session = Depends(get_db)):
     if not event:
         raise HTTPException(status_code=404, detail="No active event")
         
-    p_type = data.get("type")
-    if p_type not in ["survey", "vote"]:
-        raise HTTPException(status_code=400, detail="Invalid interaction type")
-        
-    # Generate ID
-    import uuid
-    plugin_id = f"custom_{p_type}_{uuid.uuid4().hex[:8]}"
-    
-    new_config = {
-        "type": p_type,
-        "name": data.get("name"),
-        "question": data.get("question"),
-        "options": data.get("options", [])
-    }
-    
-    current_plugins = dict(event.custom_plugins) if event.custom_plugins else {}
-    current_plugins[plugin_id] = new_config
-    
-    event.custom_plugins = current_plugins
-    db.commit()
-    
-    return {"status": "ok", "id": plugin_id}
+    plugin_id = data.get("plugin_id")
+    if not plugin_id:
+        raise HTTPException(status_code=400, detail="Plugin ID required")
 
-@router.delete("/api/admin/interactions/{plugin_id}")
-async def delete_interaction(plugin_id: str, db: Session = Depends(get_db)):
-    event = db.query(Event).filter(Event.is_active == True).first()
-    if not event or not event.custom_plugins:
-        raise HTTPException(status_code=404, detail="Interaction not found")
-        
-    current_plugins = dict(event.custom_plugins)
-    if plugin_id in current_plugins:
-        del current_plugins[plugin_id]
-        event.custom_plugins = current_plugins
-        db.commit()
-        return {"status": "ok"}
-        
-    raise HTTPException(status_code=404, detail="Interaction not found")
+    # Basic default config if not provided
+    config = data.get("config", {})
+    name = data.get("name", "New Interaction")
+
+    new_interaction = Interaction(
+        event_id=event.id,
+        plugin_id=plugin_id,
+        name=name,
+        config=config,
+        is_enabled=False
+    )
+    
+    db.add(new_interaction)
+    db.commit()
+    db.refresh(new_interaction)
+    
+    return {"status": "ok", "id": new_interaction.id}
+
+@router.delete("/api/admin/interactions/{interaction_id}")
+async def delete_interaction(interaction_id: int, db: Session = Depends(get_db)):
+    interaction = db.query(Interaction).filter(Interaction.id == interaction_id).first()
+    if not interaction:
+         raise HTTPException(status_code=404, detail="Interaction not found")
+         
+    db.delete(interaction)
+    db.commit()
+    return {"status": "ok"}
+    
+@router.post("/api/admin/interactions/{interaction_id}/toggle")
+async def toggle_interaction(interaction_id: int, enable: bool, db: Session = Depends(get_db)):
+    interaction = db.query(Interaction).filter(Interaction.id == interaction_id).first()
+    if not interaction:
+         raise HTTPException(status_code=404, detail="Interaction not found")
+    
+    interaction.is_enabled = enable
+    db.commit()
+    return {"status": "ok"}
 
 # New Endpoint for Config
 @router.post("/api/admin/plugin_config")

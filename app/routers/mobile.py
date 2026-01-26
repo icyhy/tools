@@ -4,9 +4,11 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Event, Participant
+from app.models import Event, Participant, Interaction
 from app.plugin_manager import plugin_manager
 import uuid
 import random
+import asyncio
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -16,20 +18,8 @@ async def signin_page(request: Request, db: Session = Depends(get_db)):
     # Check event status
     event = db.query(Event).filter(Event.is_active == True).first()
     if not event or event.status != "running":
-        # Check if user is trying to be host? No, generic signin page.
-        # But wait, Host needs to sign in to start the event?
-        # Typically Host signs in via same page.
-        # If event is pending, User should see "Waiting", but Host should be able to login?
-        # Let's allow login page, but maybe show a warning or handle in post?
-        # Actually, user requirement: "Otherwise, signin page ... shows no training".
-        # But if it shows "No training", how does Host login to start it?
-        # Maybe Host logs in via Admin? No, Host is separate role.
-        # Let's assume Host uses same signin page.
-        # So we should show the page, but maybe with a note.
-        # OR: The requirement means "User entering signin page will see No Training".
-        # Let's render a different template or pass a flag if not running.
-        pass
-
+         return templates.TemplateResponse("mobile_no_training.html", {"request": request, "event": event})
+                
     # Check if already signed in
     session_token = request.cookies.get("session_token")
     if session_token:
@@ -40,9 +30,6 @@ async def signin_page(request: Request, db: Session = Depends(get_db)):
             else:
                 return RedirectResponse(url="/mobile/home", status_code=302)
     
-    if not event or event.status != "running":
-         return templates.TemplateResponse("mobile_no_training.html", {"request": request, "event": event})
-                
     return templates.TemplateResponse("mobile_signin.html", {"request": request})
 
 from app.websockets import manager
@@ -66,9 +53,6 @@ async def signin(
     
     # Handle Host Logic
     if role == "host":
-        # Simple check (plain text match for MVP as requested 'admin123' default)
-        # In real world, verify hash.
-        # User requested: "主持人密码由后台配置...默认admin123"
         if host_password != "admin123" and host_password != event.host_password_hash:
              return templates.TemplateResponse("mobile_signin.html", {
                  "request": request, 
@@ -84,17 +68,12 @@ async def signin(
         ).first()
 
         if existing_participant:
-            # Re-login: Update session token to new session
-            # This prevents duplicate counting
             session_token = str(uuid.uuid4())
             existing_participant.session_token = session_token
-            # Update department if changed (optional)
             if department:
                 existing_participant.department = department
-            
             db.commit()
             
-            # Use redirect logic
             redirect_url = "/mobile/home"
             response = RedirectResponse(url=redirect_url, status_code=302)
             response.set_cookie(key="session_token", value=session_token, httponly=True)
@@ -137,14 +116,14 @@ async def mobile_home(request: Request, db: Session = Depends(get_db)):
         
     event = db.query(Event).filter(Event.is_active == True).first()
     
-    current_plugin = None
-    if event and event.current_plugin_id and event.current_plugin_state == "running":
-        current_plugin = event.current_plugin_id
+    current_interaction_id = None
+    if event and event.current_interaction_id and event.current_plugin_state == "running":
+        current_interaction_id = event.current_interaction_id
         
     return templates.TemplateResponse("mobile_home.html", {
         "request": request, 
         "participant": participant,
-        "current_plugin": current_plugin
+        "current_plugin": current_interaction_id
     })
 
 @router.get("/mobile/host")
@@ -157,41 +136,50 @@ async def mobile_host(request: Request, db: Session = Depends(get_db)):
     if not participant or participant.role != "host":
         return RedirectResponse(url="/signin")
         
+    event = db.query(Event).filter(Event.is_active == True).first()
+    interactions = []
+    if event:
+        interactions = db.query(Interaction)\
+            .filter(Interaction.event_id == event.id, Interaction.is_enabled == True)\
+            .all()
+        
     return templates.TemplateResponse("mobile_host.html", {
         "request": request, 
         "participant": participant,
-        "plugins": plugin_manager.get_all_plugins(db)  # Pass dict, not values()
+        "interactions": interactions
     })
 
-@router.get("/mobile/plugin/{plugin_id}")
-async def mobile_plugin(plugin_id: str, request: Request, db: Session = Depends(get_db)):
+@router.get("/mobile/plugin/{interaction_id}")
+async def mobile_plugin(interaction_id: int, request: Request, db: Session = Depends(get_db)):
     session_token = request.cookies.get("session_token")
     if not session_token:
         return RedirectResponse(url="/signin")
     
-    # Check participant
     participant = db.query(Participant).filter(Participant.session_token == session_token).first()
     if not participant:
         return RedirectResponse(url="/signin")
     
-    # Get plugin templates dynamically
-    plugin_templates = plugin_manager.get_templates(plugin_id)
-    if not plugin_templates:
-        raise HTTPException(status_code=404, detail="Plugin not found")
-         
+    interaction = db.query(Interaction).filter(Interaction.id == interaction_id).first()
+    if not interaction:
+         raise HTTPException(status_code=404, detail="Interaction not found")
+
+    plugin_id = interaction.plugin_id
     plugin = plugin_manager.get_plugin(plugin_id)
     if not plugin:
-         raise HTTPException(status_code=404, detail="Plugin not found")
+         raise HTTPException(status_code=404, detail="Plugin code not found")
 
-    # Prepare template context with correct config structure
+    plugin_templates = plugin_manager.get_templates(plugin_id)
+    if not plugin_templates:
+        raise HTTPException(status_code=404, detail="Plugin templates not found")
+
     context = {
         "request": request,
-        "config": plugin.meta.get("config", {}),
-        "plugin_name": plugin.meta.get("name", ""),
-        "plugin_meta": plugin.meta
+        "config": interaction.config,
+        "plugin_name": interaction.name,
+        "plugin_meta": plugin.meta,
+        "interaction_id": interaction.id
     }
 
-    # Return appropriate template based on role
     if participant.role == "host":
         return plugin_templates.TemplateResponse("host.html", context)
     else:
@@ -199,7 +187,6 @@ async def mobile_plugin(plugin_id: str, request: Request, db: Session = Depends(
 
 @router.post("/api/host/show_stats")
 async def host_show_stats(request: Request, db: Session = Depends(get_db)):
-    # Verify host session (simplified)
     session_token = request.cookies.get("session_token")
     participant = db.query(Participant).filter(Participant.session_token == session_token).first()
     if not participant or participant.role not in ["host", "admin"]:
@@ -207,23 +194,13 @@ async def host_show_stats(request: Request, db: Session = Depends(get_db)):
     
     event = db.query(Event).filter(Event.is_active == True).first()
     if event:
-        # Notify display to switch to stats
         await manager.broadcast({
             "type": "show_stats"
         })
-        
-        # Update event state (optional)
         event.current_plugin_state = "stats"
         db.commit()
     
     return {"status": "ok"}
-
-@router.get("/user/{plugin_id}")
-async def user_plugin(plugin_id: str, request: Request, db: Session = Depends(get_db)):
-    plugin_templates = plugin_manager.get_templates(plugin_id)
-    if not plugin_templates:
-        raise HTTPException(status_code=404, detail="Plugin not found")
-    return plugin_templates.TemplateResponse("user.html", {"request": request})
 
 @router.get("/api/training/status")
 async def get_training_status(db: Session = Depends(get_db)):
@@ -239,20 +216,27 @@ async def get_training_status(db: Session = Depends(get_db)):
             "timestamp": time.time()
         }
     
-    # Count participants for this event
     participant_count = db.query(Participant).filter(Participant.event_id == event.id).count()
     
     return {
         "status": event.status,  # 'running' or 'idle'
-        "plugin_id": event.current_plugin_id,
+        "plugin_id": event.current_interaction_id, # Returning interaction_id as plugin_id for frontend compat
         "plugin_state": event.current_plugin_state,  # 'running', 'results', 'idle'
         "participant_count": participant_count,
         "timestamp": time.time()
     }
 
-@router.get("/api/plugin/{plugin_id}/missing")
-async def get_missing_numbers(plugin_id: str, phase: int = 1, db: Session = Depends(get_db)):
+@router.get("/api/plugin/{interaction_id}/missing")
+async def get_missing_numbers(interaction_id: int, phase: int = 1, db: Session = Depends(get_db)):
     """Get missing numbers for the find numbers game - specific phase"""
+    # Note: Plugin data storage might need refactoring if it was keyed by ID. 
+    # Current implementation uses 'plugin_data' column in Event (legacy/general).
+    # For now we keep using 'plugin_data' but check if we need to scope by interaction.
+    # The original implementation used 'plugin_data' on Event. 
+    # If multiple interactions use this, they will overwrite each other. 
+    # Ideally Interaction model should store state, or PluginSubmission.
+    # For MVP of 'Find Numbers', assuming one instance per event is fine, OR we key by interaction_id.
+    
     event = db.query(Event).filter(Event.is_active == True).first()
     if not event or not event.plugin_data:
         return {"missing_numbers": []}
@@ -261,8 +245,8 @@ async def get_missing_numbers(plugin_id: str, phase: int = 1, db: Session = Depe
     phase_key = f"phase{phase}_missing"
     return {"missing_numbers": plugin_data.get(phase_key, [])}
 
-@router.post("/api/plugin/{plugin_id}/submit")
-async def submit_plugin_answer(plugin_id: str, data: dict, request: Request, db: Session = Depends(get_db)):
+@router.post("/api/plugin/{interaction_id}/submit")
+async def submit_plugin_answer(interaction_id: int, data: dict, request: Request, db: Session = Depends(get_db)):
     """Handle user submission for plugin"""
     session_token = request.cookies.get("session_token")
     if not session_token:
@@ -276,18 +260,26 @@ async def submit_plugin_answer(plugin_id: str, data: dict, request: Request, db:
     if not event:
         raise HTTPException(status_code=400, detail="No active event")
         
-    if event.current_plugin_id != plugin_id or event.current_plugin_state != "running":
+    if event.current_interaction_id != interaction_id or event.current_plugin_state != "running":
         raise HTTPException(status_code=400, detail="Plugin not running")
 
-    plugin = plugin_manager.get_plugin(plugin_id)
-    if not plugin:
-        raise HTTPException(status_code=404, detail="Plugin not found")
+    interaction = db.query(Interaction).filter(Interaction.id == interaction_id).first()
+    if not interaction:
+        raise HTTPException(status_code=404, detail="Interaction not found")
         
+    plugin = plugin_manager.get_plugin(interaction.plugin_id)
+    if not plugin:
+         raise HTTPException(status_code=404, detail="Plugin code not found")
 
-    # Process input via plugin logic
     try:
+        # TODO: update handle_input to accept interaction_id if needed, or stick to event_id
+        # Ideally we pass interaction_id so plugin can store submissions keyed by it.
+        # But BasePlugin.handle_input signature is (event_id, user_id, data).
+        # We can pass interaction_id in 'data' or update method signature.
+        # Let's pass it in data for minimal refactor of Plugin interface.
+        data['_interaction_id'] = interaction_id
         await plugin.handle_input(event.id, participant.id, data)
-        # Increment interaction count
+        
         participant.interaction_count = (participant.interaction_count or 0) + 1
         db.commit()
     except Exception as e:
@@ -298,15 +290,14 @@ async def submit_plugin_answer(plugin_id: str, data: dict, request: Request, db:
 
 @router.get("/api/stats/count")
 async def get_stats_count(db: Session = Depends(get_db)):
-    """获取签到人数 - 用于前端轮询"""
     event = db.query(Event).filter(Event.is_active == True).first()
     if not event:
         return {"count": 0}
     count = db.query(Participant).filter(Participant.event_id == event.id).count()
     return {"count": count}
 
-@router.post("/api/plugin/{plugin_id}/start")
-async def start_plugin(plugin_id: str, request: Request, db: Session = Depends(get_db)):
+@router.post("/api/plugin/{interaction_id}/start")
+async def start_plugin(interaction_id: int, request: Request, db: Session = Depends(get_db)):
     session_token = request.cookies.get("session_token")
     if not session_token:
         raise HTTPException(status_code=401, detail="Unauthorized")
@@ -319,26 +310,32 @@ async def start_plugin(plugin_id: str, request: Request, db: Session = Depends(g
     if not event:
         raise HTTPException(status_code=400, detail="No active event")
 
-    plugin = plugin_manager.get_plugin(plugin_id)
+    interaction = db.query(Interaction).filter(Interaction.id == interaction_id).first()
+    if not interaction:
+         raise HTTPException(status_code=404, detail="Interaction not found")
+         
+    plugin = plugin_manager.get_plugin(interaction.plugin_id)
     if not plugin:
         raise HTTPException(status_code=404, detail="Plugin not found")
         
     # Update Event State
-    event.current_plugin_id = plugin_id
+    event.current_interaction_id = interaction_id
     event.current_plugin_state = "running"
+    # Legacy field cleanup if necessary (current_plugin_id)
     db.commit()
     
+    # Pass interaction config if needed? 
+    # 'start' method might need to know which interaction it is.
+    # We can overload 'start' to take interaction_id or just event_id.
+    # Currently it takes event_id.
     await plugin.start(event.id)
     
-    # Broadcast plugin start to display so it can reload and show game content
     await manager.broadcast_to_display({
         "type": "plugin_start",
-        "plugin_id": plugin_id
+        "plugin_id": interaction_id # Send interaction ID as plugin_id
     })
     
     return {"status": "ok"}
-
-import asyncio
 
 @router.post("/api/plugin/countdown")
 async def plugin_countdown(request: Request, data: dict, db: Session = Depends(get_db)):
@@ -352,15 +349,7 @@ async def plugin_countdown(request: Request, data: dict, db: Session = Depends(g
 
     seconds = data.get("seconds", 10)
     
-    # Broadcast countdown start
     await manager.broadcast_to_display({"type": "countdown_start", "seconds": seconds})
-    
-    # Schedule stop task (in background or simple asyncio.sleep for MVP)
-    # Note: blocking the request with sleep is bad practice for production, 
-    # but for this MVP single-process server it works if we use asyncio.create_task 
-    # or just let the client (host or display) trigger the end?
-    # Actually, the user requirement implies "Time ends -> auto show results".
-    # Best way: Server background task.
     
     asyncio.create_task(run_countdown_and_stop(seconds, request, db))
     
@@ -368,11 +357,10 @@ async def plugin_countdown(request: Request, data: dict, db: Session = Depends(g
 
 @router.post("/api/plugin/set_phase")
 async def set_plugin_phase(request: Request, data: dict, db: Session = Depends(get_db)):
-    """Set the phase/stage of the current plugin"""
     session_token = request.cookies.get("session_token")
     if not session_token:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-        
+         raise HTTPException(status_code=401, detail="Unauthorized")
+         
     participant = db.query(Participant).filter(Participant.session_token == session_token).first()
     if not participant or participant.role != "host":
         raise HTTPException(status_code=403, detail="Forbidden")
@@ -383,16 +371,16 @@ async def set_plugin_phase(request: Request, data: dict, db: Session = Depends(g
     if not event:
         raise HTTPException(status_code=400, detail="No active event")
     
-    # Broadcast phase change to display and users
+    # Broadcast phase change
     await manager.broadcast_to_display({
         "type": "plugin_phase_change", 
         "phase": phase,
-        "plugin_id": event.current_plugin_id
+        "plugin_id": event.current_interaction_id
     })
     await manager.broadcast_to_users({
         "type": "plugin_phase_change", 
         "phase": phase,
-        "plugin_id": event.current_plugin_id
+        "plugin_id": event.current_interaction_id
     })
     
     return {"status": "ok", "phase": phase}
@@ -411,28 +399,27 @@ async def stop_plugin(request: Request, db: Session = Depends(get_db)):
     if not event:
         raise HTTPException(status_code=400, detail="No active event")
 
-    if event.current_plugin_id:
-        plugin = plugin_manager.get_plugin(event.current_plugin_id)
-        if plugin:
-            await plugin.stop(event.id)
+    interaction_id = event.current_interaction_id
+    if interaction_id:
+        # We need plugin_id to stop it? 
+        interaction = db.query(Interaction).filter(Interaction.id == interaction_id).first()
+        if interaction:
+             plugin = plugin_manager.get_plugin(interaction.plugin_id)
+             if plugin:
+                 await plugin.stop(event.id)
             
     event.current_plugin_state = "results"
     db.commit()
     
     # Broadcast stop/results
-    await manager.broadcast_to_display({"type": "plugin_end", "plugin_id": event.current_plugin_id})
-    await manager.broadcast_to_users({"type": "plugin_end", "plugin_id": event.current_plugin_id})
-    await manager.broadcast_to_host({"type": "plugin_end", "plugin_id": event.current_plugin_id})
+    await manager.broadcast_to_display({"type": "plugin_end", "plugin_id": interaction_id})
+    await manager.broadcast_to_users({"type": "plugin_end", "plugin_id": interaction_id})
+    await manager.broadcast_to_host({"type": "plugin_end", "plugin_id": interaction_id})
     
     return {"status": "ok"}
 
 async def run_countdown_and_stop(seconds: int, request: Request, db: Session):
     await asyncio.sleep(seconds)
-    # We need a fresh DB session here ideally, or handle careful scope.
-    # Re-using 'db' from dependency might be closed.
-    # So let's instantiate a new session or call the stop_plugin logic internally.
-    # For MVP simplicity, let's just trigger the broadcast "plugin_end" and update DB.
-    # But wait, we need to update DB state to 'results'.
     
     from app.database import SessionLocal
     new_db = SessionLocal()
@@ -442,10 +429,10 @@ async def run_countdown_and_stop(seconds: int, request: Request, db: Session):
              event.current_plugin_state = "results"
              new_db.commit()
              
-             if event.current_plugin_id:
-                await manager.broadcast_to_display({"type": "plugin_end", "plugin_id": event.current_plugin_id})
-                await manager.broadcast_to_users({"type": "plugin_end", "plugin_id": event.current_plugin_id})
-                await manager.broadcast_to_host({"type": "plugin_end", "plugin_id": event.current_plugin_id})
+             if event.current_interaction_id:
+                await manager.broadcast_to_display({"type": "plugin_end", "plugin_id": event.current_interaction_id})
+                await manager.broadcast_to_users({"type": "plugin_end", "plugin_id": event.current_interaction_id})
+                await manager.broadcast_to_host({"type": "plugin_end", "plugin_id": event.current_interaction_id})
     except Exception as e:
         print(f"Error in countdown task: {e}")
     finally:
@@ -465,72 +452,39 @@ async def reset_plugin(request: Request, db: Session = Depends(get_db)):
     if not event:
         raise HTTPException(status_code=400, detail="No active event")
 
-    # Stop current plugin if any
-    if event.current_plugin_id:
-        plugin = plugin_manager.get_plugin(event.current_plugin_id)
-        if plugin:
-            await plugin.stop(event.id)
+    if event.current_interaction_id:
+        interaction = db.query(Interaction).filter(Interaction.id == event.current_interaction_id).first()
+        if interaction:
+            plugin = plugin_manager.get_plugin(interaction.plugin_id)
+            if plugin:
+                await plugin.stop(event.id)
 
-    # Reset state to idle
-    event.current_plugin_id = None
+    event.current_interaction_id = None
     event.current_plugin_state = "idle"
     db.commit()
     
-    # Broadcast reset
     await manager.broadcast_to_display({"type": "plugin_reset"})
     await manager.broadcast_to_users({"type": "plugin_reset"})
     await manager.broadcast_to_host({"type": "plugin_reset"})
     
     return {"status": "ok"}
 
-@router.get("/api/plugin/{plugin_id}/config")
-async def get_plugin_config(plugin_id: str, db: Session = Depends(get_db)):
-    plugin = plugin_manager.get_plugin(plugin_id)
-    if not plugin:
-        raise HTTPException(status_code=404, detail="Plugin not found")
-        
-    event = db.query(Event).filter(Event.is_active == True).first()
-    config = {}
-    if event and event.plugins_config:
-        config = event.plugins_config.get(plugin_id, {})
-        
-    if not config:
-        config = plugin.meta.get("config", {})
+@router.get("/api/plugin/{interaction_id}/config")
+async def get_plugin_config(interaction_id: int, db: Session = Depends(get_db)):
+    interaction = db.query(Interaction).filter(Interaction.id == interaction_id).first()
+    if not interaction:
+         raise HTTPException(status_code=404, detail="Interaction not found")
+    
+    config = interaction.config or {}
+    # Merge with default if needed, or just return interaction config
+    # Previously we merged with plugin.meta.config
+    
+    plugin = plugin_manager.get_plugin(interaction.plugin_id)
+    if plugin:
+        default_config = plugin.meta.get("config", {})
+        # Merge: default updated by interaction config
+        final_config = default_config.copy()
+        final_config.update(config)
+        return final_config
         
     return config
-
-@router.post("/api/plugin/{plugin_id}/submit")
-async def submit_plugin(plugin_id: str, request: Request, data: dict, db: Session = Depends(get_db)):
-    session_token = request.cookies.get("session_token")
-    if not session_token:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-        
-    participant = db.query(Participant).filter(Participant.session_token == session_token).first()
-    if not participant:
-        raise HTTPException(status_code=403, detail="Forbidden")
-
-    event = db.query(Event).filter(Event.is_active == True).first()
-    if not event:
-        raise HTTPException(status_code=400, detail="No active event")
-        
-    if event.current_plugin_id != plugin_id or event.current_plugin_state != "running":
-        raise HTTPException(status_code=400, detail="Plugin not running")
-
-    plugin = plugin_manager.get_plugin(plugin_id)
-    if not plugin:
-        raise HTTPException(status_code=404, detail="Plugin not found")
-        
-    await plugin.handle_input(event.id, participant.id, data)
-    return {"status": "ok"}
-
-@router.get("/host/{plugin_id}")
-async def host_plugin(plugin_id: str, request: Request, db: Session = Depends(get_db)):
-    plugin_templates = plugin_manager.get_templates(plugin_id)
-    if not plugin_templates:
-        raise HTTPException(status_code=404, detail="Plugin not found")
-        
-    plugin = plugin_manager.get_plugin(plugin_id)
-    if not plugin:
-        raise HTTPException(status_code=404, detail="Plugin not found")
-        
-    return plugin_templates.TemplateResponse("host.html", {"request": request, "config": plugin.meta})

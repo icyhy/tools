@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request, Depends, HTTPException
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import Event, Participant
+from app.models import Event, Participant, Interaction
 from app.utils import generate_qr_base64, get_server_url
 from app.plugin_manager import plugin_manager
 
@@ -24,17 +24,14 @@ async def display_index(request: Request, db: Session = Depends(get_db)):
     count = db.query(Participant).filter(Participant.event_id == event.id).count()
     
     # Generate QR code for signin page
-    # Use server IP address instead of localhost for mobile access
     base_url = get_server_url()
     signin_url = f"{base_url}/signin"
     qr_code = generate_qr_base64(signin_url)
     
-    # Check current plugin state
-    current_plugin = None
-    if event.current_plugin_id and event.current_plugin_state == "running":
-        current_plugin = event.current_plugin_id
-    elif event.current_plugin_id and event.current_plugin_state == "results":
-        current_plugin = event.current_plugin_id # Or a specific results page
+    # Check current interaction state
+    current_interaction_id = None
+    if event.current_interaction_id and event.current_plugin_state in ["running", "results"]:
+        current_interaction_id = event.current_interaction_id
         
     return templates.TemplateResponse("index.html", {
         "request": request,
@@ -42,57 +39,62 @@ async def display_index(request: Request, db: Session = Depends(get_db)):
         "participant_count": count,
         "qr_code": qr_code,
         "signin_url": signin_url,
-        "current_plugin": current_plugin,
+        "current_plugin": current_interaction_id, # Template expects 'current_plugin' variable
         "current_plugin_state": event.current_plugin_state
     })
 
-@router.get("/display/{plugin_id}")
-async def display_plugin(plugin_id: str, request: Request):
-    """Load plugin display content"""
+@router.get("/display/{interaction_id}")
+async def display_plugin(interaction_id: int, request: Request, db: Session = Depends(get_db)):
+    """Load plugin display content by interaction ID"""
+    interaction = db.query(Interaction).filter(Interaction.id == interaction_id).first()
+    if not interaction:
+        raise HTTPException(status_code=404, detail="Interaction not found")
+        
+    plugin_id = interaction.plugin_id
     plugin = plugin_manager.get_plugin(plugin_id)
     if not plugin:
-        raise HTTPException(status_code=404, detail="Plugin not found")
+        raise HTTPException(status_code=404, detail="Plugin code not found")
         
     plugin_templates = plugin_manager.get_templates(plugin_id)
     if not plugin_templates:
         raise HTTPException(status_code=404, detail="Plugin templates not found")
         
-    # Prepare template context with correct config structure
-    # Merge event-specific config if available
-    config = plugin.meta.get("config", {}).copy()
+    # Config comes from the Interaction instance
+    config = interaction.config.copy()
     
-    # Try to find active event and its config for this plugin
-    # Note: In a real app we might pass event_id in URL or infer from session/host
-    try:
-        event = db.query(Event).filter(Event.is_active == True).first()
-        if event and event.plugins_config and plugin_id in event.plugins_config:
-            # Update with event specific config
-            config.update(event.plugins_config.get(plugin_id, {}))
-    except Exception as e:
-        # Fallback to default config if db error
-        pass
-
     context = {
         "request": request,
         "config": config,
-        "plugin_name": plugin.meta.get("name", ""),
-        "plugin_meta": plugin.meta
+        "plugin_name": interaction.name,
+        "plugin_meta": plugin.meta,
+        "interaction_id": interaction.id
     }
     return plugin_templates.TemplateResponse("display.html", context)
 
-@router.get("/display/results/{plugin_id}")
-async def display_results(plugin_id: str, request: Request, db: Session = Depends(get_db)):
-    """Load plugin results page"""
+@router.get("/display/results/{interaction_id}")
+async def display_results(interaction_id: int, request: Request, db: Session = Depends(get_db)):
+    """Load plugin results page by interaction ID"""
+    interaction = db.query(Interaction).filter(Interaction.id == interaction_id).first()
+    if not interaction:
+         raise HTTPException(status_code=404, detail="Interaction not found")
+
+    plugin_id = interaction.plugin_id
     plugin = plugin_manager.get_plugin(plugin_id)
     if not plugin:
-        raise HTTPException(status_code=404, detail="Plugin not found")
+        raise HTTPException(status_code=404, detail="Plugin code not found")
         
-    # Get results data from current active event
-    event = db.query(Event).filter(Event.is_active == True).first()
-    if not event:
-         raise HTTPException(status_code=404, detail="No active event")
-         
-    results = await plugin.get_results(event.id)
+    # Get results data from current active event using the Interaction ID logic
+    # The plugin.get_results typically takes event_id. 
+    # Plugins need to be updated to handle multiple interactions if they store data keyed by plugin_id.
+    # Refactoring approach: pass interaction_id to get_results? 
+    # For now, let's look at how plugins store data.
+    # BasePlugin.get_results(event_id) -> dict.
+    # It likely queries PluginSubmission.
+    
+    results = await plugin.get_results(interaction.event_id)
+    # TODO: Filter results by interaction_id IF the plugin supports it.
+    # Currently Model PluginSubmission has plugin_id (String). 
+    # We might need to migrate PluginSubmission to use interaction_id (Integer) or store interaction_id in 'data'.
     
     plugin_templates = plugin_manager.get_templates(plugin_id)
     if not plugin_templates:
@@ -101,9 +103,10 @@ async def display_results(plugin_id: str, request: Request, db: Session = Depend
     context = {
         "request": request,
         "results": results,
-        "config": plugin.meta.get("config", {}),
-        "plugin_name": plugin.meta.get("name", ""),
-        "plugin_meta": plugin.meta
+        "config": interaction.config,
+        "plugin_name": interaction.name,
+        "plugin_meta": plugin.meta,
+        "interaction_id": interaction.id
     }
     return plugin_templates.TemplateResponse("results.html", context)
 

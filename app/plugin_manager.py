@@ -105,81 +105,13 @@ class PluginManager:
             db.close()
 
     def get_plugin(self, plugin_id: str):
-        # 1. Check static plugins
-        if plugin_id in self.plugins:
-            return self.plugins[plugin_id]
-            
-        # 2. Check dynamic plugins (Custom)
-        # Check simple heuristic or query DB if needed. 
-        # Using a fresh session here for safety, though caching would be better.
-        if plugin_id.startswith("custom_"):
-            db = SessionLocal()
-            try:
-                event = db.query(Event).filter(Event.is_active == True).first()
-                if event and event.custom_plugins:
-                    custom_config = event.custom_plugins.get(plugin_id)
-                    if custom_config:
-                        return self.create_dynamic_plugin(plugin_id, custom_config)
-            except Exception as e:
-                logger.error(f"Error loading dynamic plugin {plugin_id}: {e}")
-            finally:
-                db.close()
-                
-        return None
-
-    def create_dynamic_plugin(self, plugin_id: str, config: dict):
-        p_type = config.get("type")
-        instance = None
-        
-        try:
-            if p_type == "survey":
-                # Lazy import to avoid circular dependency
-                from plugins.ai_survey.plugin import Plugin as SurveyPlugin
-                # Use base plugin path for templates
-                instance = SurveyPlugin(plugin_id, os.path.join(self.plugin_dir, "ai_survey"))
-            elif p_type == "vote":
-                from plugins.demo_vote.plugin import Plugin as VotePlugin
-                instance = VotePlugin(plugin_id, os.path.join(self.plugin_dir, "demo_vote"))
-        except ImportError as e:
-            logger.error(f"Could not import base plugin for type {p_type}: {e}")
-            return None
-            
-        if instance:
-            # Override meta with custom config
-            instance.meta = {
-                "name": config.get("name", plugin_id),
-                "description": "Custom Interaction",
-                "config": config
-            }
-        return instance
+        return self.plugins.get(plugin_id)
 
     def get_templates(self, plugin_id: str):
-        if plugin_id in self.templates:
-            return self.templates[plugin_id]
-            
-        # Forward dynamic plugins to base templates
-        if plugin_id.startswith("custom_survey"):
-            return self.templates.get("ai_survey")
-        elif plugin_id.startswith("custom_vote"):
-            return self.templates.get("demo_vote")
-            
-        return None
+        return self.templates.get(plugin_id)
         
-    def get_all_plugins(self, db: SessionLocal):
-        """Return combined list of static and dynamic plugins"""
-        all_plugins = self.plugins.copy()
-        
-        # Merge dynamic plugins
-        try:
-            event = db.query(Event).filter(Event.is_active == True).first()
-            if event and event.custom_plugins:
-                for pid, config in event.custom_plugins.items():
-                    plugin = self.create_dynamic_plugin(pid, config)
-                    if plugin:
-                        all_plugins[pid] = plugin
-        except Exception as e:
-            logger.error(f"Error fetching dynamic plugins: {e}")
-            
-        return all_plugins
+    def get_all_plugins(self):
+        """Return list of static plugins"""
+        return self.plugins.copy()
 
 plugin_manager = PluginManager()

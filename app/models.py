@@ -14,12 +14,28 @@ class Event(Base):
     logo_url = Column(String, nullable=True) # URL or Base64
     is_active = Column(Boolean, default=True)
     status = Column(String, default="pending") # pending, running, ended
-    enabled_plugins = Column(JSON, default=[]) # List of plugin IDs enabled for this event
-    plugins_config = Column(JSON, default={}) # Event-specific config for plugins
-    current_plugin_id = Column(String, nullable=True) # Currently active plugin ID for display
+    
+    # State management
+    current_interaction_id = Column(Integer, ForeignKey("interactions.id"), nullable=True)
     current_plugin_state = Column(String, default="idle") # idle, running, results
-    plugin_data = Column(JSON, nullable=True) # Data for general plugins to store state
-    custom_plugins = Column(JSON, nullable=True) # Store custom survey/vote configurations
+    
+    # Legacy fields removed: enabled_plugins, plugins_config, current_plugin_id (replaced by current_interaction_id), custom_plugins
+    
+    interactions = relationship("Interaction", back_populates="event", foreign_keys="[Interaction.event_id]")
+
+class Interaction(Base):
+    __tablename__ = "interactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(Integer, ForeignKey("events.id"))
+    plugin_id = Column(String, ForeignKey("plugins.id"))
+    name = Column(String) # e.g. "Morning Survey"
+    config = Column(JSON, default={}) # Specific config for this interaction (e.g. question)
+    is_enabled = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    event = relationship("Event", back_populates="interactions", foreign_keys=[event_id])
+    plugin = relationship("Plugin")
 
 class Participant(Base):
     __tablename__ = "participants"

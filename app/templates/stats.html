@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>互动统计</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        h1 {
+            font-size: 3.5rem;
+            margin-bottom: 20px;
+            color: #4a90e2;
+            text-shadow: 0 0 20px rgba(74, 144, 226, 0.5);
+        }
+
+        h2 {
+            font-size: 2rem;
+            margin-bottom: 50px;
+            color: #aaa;
+        }
+
+        .stats-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            width: 80%;
+            max-width: 800px;
+        }
+
+        .participant-card {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
+            border-radius: 15px;
+            padding: 20px 40px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .rank {
+            font-size: 2.5rem;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 60px;
+            height: 60px;
+            margin-right: 30px;
+        }
+
+        .info {
+            flex: 1;
+        }
+
+        .name {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .dept {
+            font-size: 1.2rem;
+            color: #aaa;
+        }
+
+        .score {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #4a90e2;
+        }
+
+        .rank-1 {
+            color: #FFD700;
+            text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+        }
+
+        .rank-2 {
+            color: #C0C0C0;
+            text-shadow: 0 0 10px rgba(192, 192, 192, 0.5);
+        }
+
+        .rank-3 {
+            color: #CD7F32;
+            text-shadow: 0 0 10px rgba(205, 127, 50, 0.5);
+        }
+
+        /* Animation */
+        .participant-card {
+            animation: slideIn 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+            opacity: 0;
+            transform: translateX(-50px);
+        }
+
+        .card-1 {
+            animation-delay: 0.2s;
+            border-left: 5px solid #FFD700;
+        }
+
+        .card-2 {
+            animation-delay: 0.4s;
+            border-left: 5px solid #C0C0C0;
+        }
+
+        .card-3 {
+            animation-delay: 0.6s;
+            border-left: 5px solid #CD7F32;
+        }
+
+        @keyframes slideIn {
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <h1>互动英雄榜</h1>
+    <h2>参与互动最积极的伙伴</h2>
+
+    <div class="stats-container">
+        {% for p in top_participants %}
+        <div class="participant-card card-{{ loop.index }}">
+            <div class="rank rank-{{ loop.index }}">
+                {% if loop.index == 1 %}🥇{% elif loop.index == 2 %}🥈{% elif loop.index == 3 %}🥉{% else %}{{
+                loop.index }}{% endif %}
+            </div>
+            <div class="info">
+                <div class="name">{{ p.name or '未知用户' }}</div>
+                <div class="dept">{{ p.department or '部门未知' }}</div>
+            </div>
+            <div class="score">{{ p.interaction_count }} 次</div>
+        </div>
+        {% else %}
+        <div style="text-align: center; font-size: 1.5rem; color: #666;">暂无互动数据</div>
+        {% endfor %}
+    </div>
+
+    <script>
+        // Auto refresh logic could go here if needed, but usually stats are static end-screen
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const ws = new WebSocket(`${protocol}//${window.location.host}/ws/display`);
+
+        ws.onmessage = function (event) {
+            const data = JSON.parse(event.data);
+            if (data.type === 'show_stats') {
+                location.reload();
+            }
+        };
+    </script>
+</body>
+
+</html>
