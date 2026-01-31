@@ -12,11 +12,18 @@ def upgrade_db():
         print(f"Skipping events update: {e}")
         
     try:
+        print("Adding current_interaction_id column to events table...")
+        cursor.execute("ALTER TABLE events ADD COLUMN current_interaction_id INTEGER")
+        print("Success.")
+    except sqlite3.OperationalError as e:
+        print(f"Skipping events update (current_interaction_id): {e}")
+
+    try:
         print("Adding interaction_count column to participants table...")
         cursor.execute("ALTER TABLE participants ADD COLUMN interaction_count INTEGER DEFAULT 0")
         print("Success.")
     except sqlite3.OperationalError as e:
-        print(f"Skipping participants update: {e}")
+        print(f"Skipping participants update (interaction_count): {e}")
 
     conn.commit()
     conn.close()

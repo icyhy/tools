@@ -11,17 +11,14 @@
 
     <div style="margin-bottom: 20px; padding: 10px; background: #f6f8fa; border-radius: 8px;">
         <strong style="display: block; font-size: 0.85rem; color: #636c76; margin-bottom: 5px;">问卷题目:</strong>
-        <span style="color: #1f2328;">{{ config.config.question }}</span>
+        <span style="color: #1f2328;">{{ config.question }}</span>
     </div>
 
     <div style="display: flex; gap: 10px;">
-        <button class="btn action-btn" onclick="startPlugin('{{ interaction_id }}')"
+        <button class="btn action-btn" onclick="loadPlugin('{{ interaction_id }}')"
             style="flex: 1; background-color: #2ea44f; border: 1px solid rgba(31, 35, 40, 0.15); color: white; padding: 10px; border-radius: 6px; font-weight: 600; cursor: pointer;">
-            开始问卷
+            开始/重置问卷
         </button>
-        <button class="btn"
-            style="flex: 1; background-color: #f6f8fa; border: 1px solid #d0d7de; color: #24292f; padding: 10px; border-radius: 6px; font-weight: 600; cursor: pointer;">
-            更多配置
-        </button>
+        <!-- Removed "More Config" as it is not implemented -->
     </div>
 </div>

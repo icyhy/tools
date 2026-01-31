@@ -19,7 +19,7 @@
 <script>
     async function submitResponse(value, btnElement) {
         try {
-            const response = await fetch('/api/plugin/ai_survey/submit', {
+            const response = await fetch('/api/plugin/{{ interaction_id }}/submit', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'

@@ -149,8 +149,8 @@ async def mobile_host(request: Request, db: Session = Depends(get_db)):
         "interactions": interactions
     })
 
-@router.get("/mobile/plugin/{interaction_id}")
-async def mobile_plugin(interaction_id: int, request: Request, db: Session = Depends(get_db)):
+@router.get("/mobile/plugin/{interaction_id_str}")
+async def mobile_plugin(interaction_id_str: str, request: Request, db: Session = Depends(get_db)):
     session_token = request.cookies.get("session_token")
     if not session_token:
         return RedirectResponse(url="/signin")
@@ -159,27 +159,32 @@ async def mobile_plugin(interaction_id: int, request: Request, db: Session = Dep
     if not participant:
         return RedirectResponse(url="/signin")
     
-    interaction = db.query(Interaction).filter(Interaction.id == interaction_id).first()
-    if not interaction:
-         raise HTTPException(status_code=404, detail="Interaction not found")
+    interaction = None
+    plugin_id = interaction_id_str
+    
+    if interaction_id_str.isdigit():
+        iid = int(interaction_id_str)
+        interaction = db.query(Interaction).filter(Interaction.id == iid).first()
+        if interaction:
+             plugin_id = interaction.plugin_id
 
-    plugin_id = interaction.plugin_id
     plugin = plugin_manager.get_plugin(plugin_id)
     if not plugin:
-         raise HTTPException(status_code=404, detail="Plugin code not found")
-
+         raise HTTPException(status_code=404, detail=f"Plugin {plugin_id} not found")
+ 
     plugin_templates = plugin_manager.get_templates(plugin_id)
     if not plugin_templates:
         raise HTTPException(status_code=404, detail="Plugin templates not found")
-
+ 
     context = {
         "request": request,
-        "config": interaction.config,
-        "plugin_name": interaction.name,
+        "config": interaction.config if interaction else plugin.meta.get("config", {}),
+        "plugin_name": interaction.name if interaction else plugin.name,
         "plugin_meta": plugin.meta,
-        "interaction_id": interaction.id
+        "interaction_id": interaction.id if interaction else 0,
+        "plugin_id": plugin_id
     }
-
+ 
     if participant.role == "host":
         return plugin_templates.TemplateResponse("host.html", context)
     else:
@@ -226,17 +231,9 @@ async def get_training_status(db: Session = Depends(get_db)):
         "timestamp": time.time()
     }
 
-@router.get("/api/plugin/{interaction_id}/missing")
-async def get_missing_numbers(interaction_id: int, phase: int = 1, db: Session = Depends(get_db)):
+@router.get("/api/plugin/{interaction_id_str}/missing")
+async def get_missing_numbers(interaction_id_str: str, phase: int = 1, db: Session = Depends(get_db)):
     """Get missing numbers for the find numbers game - specific phase"""
-    # Note: Plugin data storage might need refactoring if it was keyed by ID. 
-    # Current implementation uses 'plugin_data' column in Event (legacy/general).
-    # For now we keep using 'plugin_data' but check if we need to scope by interaction.
-    # The original implementation used 'plugin_data' on Event. 
-    # If multiple interactions use this, they will overwrite each other. 
-    # Ideally Interaction model should store state, or PluginSubmission.
-    # For MVP of 'Find Numbers', assuming one instance per event is fine, OR we key by interaction_id.
-    
     event = db.query(Event).filter(Event.is_active == True).first()
     if not event or not event.plugin_data:
         return {"missing_numbers": []}
@@ -425,14 +422,12 @@ async def run_countdown_and_stop(seconds: int, request: Request, db: Session):
     new_db = SessionLocal()
     try:
         event = new_db.query(Event).filter(Event.is_active == True).first()
-        if event and event.current_plugin_state == "running":
-             event.current_plugin_state = "results"
-             new_db.commit()
-             
-             if event.current_interaction_id:
-                await manager.broadcast_to_display({"type": "plugin_end", "plugin_id": event.current_interaction_id})
-                await manager.broadcast_to_users({"type": "plugin_end", "plugin_id": event.current_interaction_id})
-                await manager.broadcast_to_host({"type": "plugin_end", "plugin_id": event.current_interaction_id})
+        if event and event.current_interaction_id:
+            event.current_plugin_state = "results"
+            new_db.commit()
+            await manager.broadcast_to_display({"type": "plugin_end", "plugin_id": event.current_interaction_id})
+            await manager.broadcast_to_users({"type": "plugin_end", "plugin_id": event.current_interaction_id})
+            await manager.broadcast_to_host({"type": "plugin_end", "plugin_id": event.current_interaction_id})
     except Exception as e:
         print(f"Error in countdown task: {e}")
     finally:

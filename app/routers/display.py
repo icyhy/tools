@@ -43,58 +43,66 @@ async def display_index(request: Request, db: Session = Depends(get_db)):
         "current_plugin_state": event.current_plugin_state
     })
 
-@router.get("/display/{interaction_id}")
-async def display_plugin(interaction_id: int, request: Request, db: Session = Depends(get_db)):
-    """Load plugin display content by interaction ID"""
-    interaction = db.query(Interaction).filter(Interaction.id == interaction_id).first()
-    if not interaction:
-        raise HTTPException(status_code=404, detail="Interaction not found")
-        
-    plugin_id = interaction.plugin_id
+@router.get("/display/{interaction_id_or_plugin_id}")
+async def display_plugin(interaction_id_or_plugin_id: str, request: Request, db: Session = Depends(get_db)):
+    """Load plugin display content by interaction ID or plugin name string"""
+    interaction = None
+    plugin_id = interaction_id_or_plugin_id
+    interaction_id = None
+
+    # Try to parse as interaction ID
+    if interaction_id_or_plugin_id.isdigit():
+        interaction_id = int(interaction_id_or_plugin_id)
+        interaction = db.query(Interaction).filter(Interaction.id == interaction_id).first()
+        if interaction:
+            plugin_id = interaction.plugin_id
+    
     plugin = plugin_manager.get_plugin(plugin_id)
     if not plugin:
-        raise HTTPException(status_code=404, detail="Plugin code not found")
+        raise HTTPException(status_code=404, detail=f"Plugin {plugin_id} not found")
         
     plugin_templates = plugin_manager.get_templates(plugin_id)
     if not plugin_templates:
         raise HTTPException(status_code=404, detail="Plugin templates not found")
         
-    # Config comes from the Interaction instance
-    config = interaction.config.copy()
+    # Config comes from Interaction if available, otherwise from plugin meta
+    config = interaction.config.copy() if interaction else plugin.meta.get("config", {})
     
     context = {
         "request": request,
         "config": config,
-        "plugin_name": interaction.name,
+        "plugin_name": interaction.name if interaction else plugin.name,
         "plugin_meta": plugin.meta,
-        "interaction_id": interaction.id
+        "interaction_id": interaction_id or 0,
+        "plugin_id": plugin_id
     }
     return plugin_templates.TemplateResponse("display.html", context)
 
-@router.get("/display/results/{interaction_id}")
-async def display_results(interaction_id: int, request: Request, db: Session = Depends(get_db)):
-    """Load plugin results page by interaction ID"""
-    interaction = db.query(Interaction).filter(Interaction.id == interaction_id).first()
-    if not interaction:
-         raise HTTPException(status_code=404, detail="Interaction not found")
+@router.get("/display/results/{interaction_id_or_plugin_id}")
+async def display_results(interaction_id_or_plugin_id: str, request: Request, db: Session = Depends(get_db)):
+    """Load plugin results page by interaction ID or plugin name"""
+    interaction = None
+    plugin_id = interaction_id_or_plugin_id
+    event_id = None
+    
+    if interaction_id_or_plugin_id.isdigit():
+        iid = int(interaction_id_or_plugin_id)
+        interaction = db.query(Interaction).filter(Interaction.id == iid).first()
+        if interaction:
+            plugin_id = interaction.plugin_id
+            event_id = interaction.event_id
 
-    plugin_id = interaction.plugin_id
+    if not event_id:
+        # Fallback to active event
+        event = db.query(Event).filter(Event.is_active == True).first()
+        if event:
+            event_id = event.id
+
     plugin = plugin_manager.get_plugin(plugin_id)
     if not plugin:
-        raise HTTPException(status_code=404, detail="Plugin code not found")
+        raise HTTPException(status_code=404, detail=f"Plugin {plugin_id} not found")
         
-    # Get results data from current active event using the Interaction ID logic
-    # The plugin.get_results typically takes event_id. 
-    # Plugins need to be updated to handle multiple interactions if they store data keyed by plugin_id.
-    # Refactoring approach: pass interaction_id to get_results? 
-    # For now, let's look at how plugins store data.
-    # BasePlugin.get_results(event_id) -> dict.
-    # It likely queries PluginSubmission.
-    
-    results = await plugin.get_results(interaction.event_id)
-    # TODO: Filter results by interaction_id IF the plugin supports it.
-    # Currently Model PluginSubmission has plugin_id (String). 
-    # We might need to migrate PluginSubmission to use interaction_id (Integer) or store interaction_id in 'data'.
+    results = await plugin.get_results(event_id)
     
     plugin_templates = plugin_manager.get_templates(plugin_id)
     if not plugin_templates:
@@ -103,10 +111,11 @@ async def display_results(interaction_id: int, request: Request, db: Session = D
     context = {
         "request": request,
         "results": results,
-        "config": interaction.config,
-        "plugin_name": interaction.name,
+        "config": interaction.config if interaction else plugin.meta.get("config", {}),
+        "plugin_name": interaction.name if interaction else plugin.name,
         "plugin_meta": plugin.meta,
-        "interaction_id": interaction.id
+        "interaction_id": interaction.id if interaction else 0,
+        "plugin_id": plugin_id
     }
     return plugin_templates.TemplateResponse("results.html", context)
 

@@ -1,6 +1,6 @@
 from app.plugin_manager import BasePlugin
 from app.websockets import manager
-from app.models import PluginSubmission, Event
+from app.models import PluginSubmission, Event, Interaction
 from app.database import SessionLocal
 import json
 
@@ -62,7 +62,14 @@ class Plugin(BasePlugin):
         try:
             # Get event config to know options
             event = db.query(Event).filter(Event.id == event_id).first()
-            config = event.plugins_config.get(self.plugin_id) if event.plugins_config else {}
+            
+            # Attempt to find configuration from the current active interaction
+            config = {}
+            if event and event.current_interaction_id:
+                interaction = db.query(Interaction).filter(Interaction.id == event.current_interaction_id).first()
+                if interaction and interaction.plugin_id == self.plugin_id:
+                    config = interaction.config or {}
+            
             if not config:
                 config = self.meta.get("config", {})
                 

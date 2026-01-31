@@ -31,9 +31,7 @@ app.mount("/plugins", StaticFiles(directory="plugins"), name="plugins")
 
 from app.routers import display, mobile, admin
 # from app.plugin_loader import plugin_router # Comment out old dynamic loader if it exists or conflicts
-from app.plugins.find_numbers import router as find_numbers_router
 
-app.include_router(find_numbers_router.router)
 app.include_router(display.router)
 app.include_router(mobile.router)
 app.include_router(admin.router)

@@ -18,7 +18,7 @@
 <script>
     async function submitVote(value, btnElement) {
         try {
-            const response = await fetch('/api/plugin/demo_vote/submit', {
+            const response = await fetch('/api/plugin/{{ interaction_id }}/submit', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'

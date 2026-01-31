@@ -110,7 +110,7 @@
         statusDiv.innerText = '提交中...';
 
         try {
-            const response = await fetch('/api/plugin/demo_finder/submit', {
+            const response = await fetch('/api/plugin/{{ interaction_id }}/submit', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
