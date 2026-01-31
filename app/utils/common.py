@@ -31,6 +31,32 @@ def get_server_url(port: int = 8000) -> str:
     Returns:
         服务器URL，格式：http://IP:PORT
     """
+    # 优先寻找常用的局域网IP段 (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+    try:
+        interfaces = socket.getaddrinfo(socket.gethostname(), None)
+        preferred_ip = None
+        for interface in interfaces:
+            ip = interface[4][0]
+            if ip.startswith("127.") or ":" in ip:
+                continue
+            
+            # 优先返回 192.168 开头的地址
+            if ip.startswith("192.168."):
+                return f"http://{ip}:{port}"
+            
+            # 其次是 10. 开头
+            if ip.startswith("10."):
+                preferred_ip = ip
+            
+            # 再次是 172. 开头
+            if ip.startswith("172.") and not preferred_ip:
+                preferred_ip = ip
+                
+        if preferred_ip:
+            return f"http://{preferred_ip}:{port}"
+    except Exception:
+        pass
+
     try:
         # 尝试获取本机局域网IP地址
         # 创建一个UDP socket连接外部地址来获取本机IP
@@ -42,5 +68,5 @@ def get_server_url(port: int = 8000) -> str:
     except Exception:
         # 如果获取失败，使用默认IP（可以通过环境变量配置）
         import os
-        default_ip = os.getenv("SERVER_IP", "192.168.1.34")
+        default_ip = os.getenv("SERVER_IP", "localhost")
         return f"http://{default_ip}:{port}"

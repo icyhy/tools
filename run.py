@@ -12,10 +12,17 @@ def install_requirements():
         sys.exit(1)
 
 def run_server():
+    try:
+        from app.utils import get_server_url
+        base_url = get_server_url()
+    except ImportError:
+        base_url = "http://localhost:8000"
+
     print("正在启动服务 (Starting server)...")
-    print("大屏幕入口 (Display): http://localhost:8000/")
-    print("管理员入口 (Admin): http://localhost:8000/admin")
-    print("手机签到 (Mobile): http://localhost:8000/signin")
+    print(f"服务运行地址 (Server URL): {base_url}")
+    print(f"大屏幕入口 (Display): {base_url}/")
+    print(f"管理员入口 (Admin): {base_url}/admin")
+    print(f"手机签到 (Mobile): {base_url}/signin")
     
     try:
         import uvicorn
